@@ -161,7 +161,6 @@ const fetchHistoryData = async (): Promise<HistoryData> => {
 
 export default function History() {
   const queryClient = useQueryClient();
-  // NEW: Added 'archived' to activeTab state type
   const [activeTab, setActiveTab] = useState<'completed' | 'cancelled' | 'archived'>('completed');
   const [searchQuery, setSearchQuery] = useState("");
   const [trailDoc, setTrailDoc] = useState<DocumentItem | null>(null);
@@ -177,28 +176,45 @@ export default function History() {
       return saved ? JSON.parse(saved) : {};
   });
 
+  // --- UPGRADED: Added refetchOnMount and refetchOnWindowFocus ---
   const { data, isLoading, refetch, isFetching } = useQuery<HistoryData>({
       queryKey: ['historyDocuments'],
-      queryFn: fetchHistoryData
+      queryFn: fetchHistoryData,
+      refetchInterval: 60000,
+      refetchOnMount: 'always',
+      refetchOnWindowFocus: true,
   });
 
+  // --- UPGRADED: Direct Realtime refetching for both Active and Archived Docs ---
   useEffect(() => {
-      const channel = supabase
+      const docsChannel = supabase
         .channel('history-document-updates')
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'documents' },
           () => {
-            queryClient.invalidateQueries({ queryKey: ['historyDocuments'] });
+            refetch(); // Instantly pulls fresh data
             queryClient.invalidateQueries({ queryKey: ['globalNavNotifications'] });
           }
         )
         .subscribe();
         
+      const archiveChannel = supabase
+        .channel('history-archive-updates')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'archived_documents' },
+          () => {
+            refetch(); // Instantly pulls fresh data for deep archives
+          }
+        )
+        .subscribe();
+        
       return () => {
-        supabase.removeChannel(channel);
+        supabase.removeChannel(docsChannel);
+        supabase.removeChannel(archiveChannel);
       };
-  }, [queryClient]);
+  }, [refetch, queryClient]);
 
   const documents = useMemo<HistoryData>(() => {
       return { 

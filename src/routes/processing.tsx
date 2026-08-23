@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Search, X, Activity, CornerUpLeft, RefreshCw, CheckCircle, MapPin, Layers } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { ProcessingData, DocumentItem } from '../types/processing';
@@ -58,7 +58,6 @@ const fetchProcessingData = async (): Promise<ProcessingData> => {
 };
 
 export default function Processing() {
-  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'processing' | 'returned'>('processing');
   const [searchQuery, setSearchQuery] = useState("");
   
@@ -80,20 +79,25 @@ export default function Processing() {
   const [lastViewedProcessing, setLastViewedProcessing] = useState(() => localStorage.getItem('filetrackr_viewed_processing') || '0');
   const [lastViewedReturned, setLastViewedReturned] = useState(() => localStorage.getItem('filetrackr_viewed_returned') || '0');
 
+  // --- REFETCH TRIGGERS ON MOUNT AND WINDOW FOCUS ---
   const { data, isLoading, isFetching, refetch } = useQuery<ProcessingData>({
       queryKey: ['processingDocuments'],
       queryFn: fetchProcessingData,
       refetchInterval: 60000, 
+      refetchOnMount: 'always',
+      refetchOnWindowFocus: true,
   });
 
-  // REALTIME UPDATES
+  // --- UPGRADED REALTIME UPDATES (SILENT) ---
   useEffect(() => {
-      const channel = supabase.channel('processing-document-updates')
+      const channel = supabase.channel('public:documents')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'documents' }, () => {
-              queryClient.invalidateQueries({ queryKey: ['processingDocuments'] });
-          }).subscribe();
+              refetch(); 
+          })
+          .subscribe();
+          
       return () => { supabase.removeChannel(channel); };
-  }, [queryClient]);
+  }, [refetch]);
 
   const documents = useMemo(() => data ? { processing: data.processing, returned: data.returned } : { processing: [], returned: [] }, [data]);
   const departments = data?.departments || [];

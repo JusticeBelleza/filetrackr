@@ -89,7 +89,9 @@ export default function CancelModal({ doc, onClose, onSuccess }: CancelModalProp
 
     return (
         <div className={`fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/60 backdrop-blur-sm transition-all ${isClosing ? 'animate-out fade-out duration-200 fill-mode-forwards' : 'animate-in fade-in duration-200'}`}>
-            <div className={`bg-white w-full max-w-sm max-h-[92vh] sm:max-h-[90vh] flex flex-col shadow-2xl rounded-t-[1.5rem] sm:rounded-3xl ${isClosing ? 'animate-out slide-out-to-bottom-[100%] sm:slide-out-to-bottom-0 sm:zoom-out-95 duration-200 fill-mode-forwards' : 'animate-in slide-in-from-bottom-[100%] sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200'}`}>
+            
+            {/* CHANGED HERE: max-w-sm to sm:max-w-md */}
+            <div className={`bg-white w-full sm:max-w-md max-h-[92vh] sm:max-h-[90vh] flex flex-col shadow-2xl rounded-t-[1.5rem] sm:rounded-3xl ${isClosing ? 'animate-out slide-out-to-bottom-[100%] sm:slide-out-to-bottom-0 sm:zoom-out-95 duration-200 fill-mode-forwards' : 'animate-in slide-in-from-bottom-[100%] sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200'}`}>
                 
                 {/* Red Header */}
                 <div className="text-white relative flex flex-col shrink-0 transition-colors duration-300 bg-red-600 rounded-t-[1.5rem] sm:rounded-t-3xl">
