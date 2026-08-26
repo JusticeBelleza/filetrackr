@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, FileText, AlertCircle, MapPin, Send, ChevronDown, Hash, Camera, Paperclip, CheckCircle, User, Search } from 'lucide-react';
+import { X, FileText, AlertCircle, MapPin, Send, ChevronDown, Hash, Camera, CheckCircle, User, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { useUiStore } from '../../store/uiStore';
 import { supabase } from '../../lib/supabase';
-import { convertImageToScannedPDF } from '../../lib/utils';
+// Ensure DocumentScanner is saved in the same directory, or adjust this import path
+import DocumentScanner from './DocumentScanner';
 
 // --- Shared Modal Animation Styles ---
 const modalAnimationStyles = `
@@ -178,7 +179,9 @@ export default function CreateDocumentModal() {
     
     const [isClosing, setIsClosing] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [isProcessingFile, setIsProcessingFile] = useState(false);
+
+    // Document Scanner State
+    const [isScannerOpen, setIsScannerOpen] = useState(false);
 
     const [categories, setCategories] = useState<SelectOption[]>([]);
     const [departments, setDepartments] = useState<SelectOption[]>([]);
@@ -241,38 +244,10 @@ export default function CreateDocumentModal() {
         setTimeout(() => closeCreateModal(), 300); 
     };
 
-    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        // Ensure file does not exceed 25MB (25 * 1024 * 1024 bytes)
-        if (file.size > 25 * 1024 * 1024) {
-            toast.error("File too large", { description: "Please select a document or image smaller than 25MB." });
-            return;
-        }
-
-        setIsProcessingFile(true);
-        setAttachmentName("Processing file...");
-
-        try {
-            if (file.type === 'application/pdf') {
-                setAttachment(file);
-                setAttachmentName(file.name);
-            } else if (file.type.startsWith('image/')) {
-                const pdfBlob = await convertImageToScannedPDF(file);
-                setAttachment(pdfBlob);
-                setAttachmentName(`Scanned_Doc_${formData.trackingNumber}.pdf`);
-            } else {
-                toast.error("Unsupported file type. Please upload an image or PDF.");
-                setAttachmentName("");
-            }
-        } catch (err) {
-            console.error("File processing error:", err);
-            toast.error("Failed to process the document.");
-            setAttachmentName("");
-        } finally {
-            setIsProcessingFile(false);
-        }
+    const handleScanComplete = (pdfBlob: Blob) => {
+        setAttachment(pdfBlob);
+        setAttachmentName(`Scanned_Doc_${formData.trackingNumber}.pdf`);
+        setIsScannerOpen(false);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -394,25 +369,46 @@ export default function CreateDocumentModal() {
                             />
                         </div>
 
+                        {/* Integrated Document Scanner Section */}
                         <div>
                             <label className="block text-xs sm:text-sm font-bold text-slate-900 mb-1.5">Scanned Attachment (Optional)</label>
-                            <div className="flex items-center gap-3">
-                                <label className={`hidden sm:flex flex-1 items-center justify-center gap-2 p-3 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${attachment ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-slate-50 border-slate-300 text-slate-600 hover:bg-white hover:border-slate-400'}`}>
-                                    <input type="file" accept="image/*,application/pdf" className="hidden" onChange={handleFileChange} disabled={isProcessingFile} />
-                                    {isProcessingFile ? <span className="animate-pulse font-bold text-sm">Processing...</span> : attachment ? <><CheckCircle size={18}/> <span className="font-bold text-sm truncate max-w-[200px]">{attachmentName}</span></> : <><Paperclip size={18}/> <span className="font-bold text-sm">Attach File / PDF</span></>}
-                                </label>
-
-                                <label className={`flex sm:hidden flex-1 items-center justify-center gap-2 p-3 border-2 border-dashed rounded-xl cursor-pointer transition-colors active:scale-95 ${attachment ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-slate-50 border-slate-300 text-slate-600 hover:bg-white hover:border-slate-400'}`}>
-                                    <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileChange} disabled={isProcessingFile} />
-                                    {isProcessingFile ? <span className="animate-pulse font-bold text-sm">Processing...</span> : attachment ? <><CheckCircle size={18}/> <span className="font-bold text-sm truncate max-w-[150px]">{attachmentName}</span></> : <><Camera size={18}/> <span className="font-bold text-sm">Scan Document</span></>}
-                                </label>
-
-                                {attachment && !isProcessingFile && (
-                                    <button type="button" onClick={() => { setAttachment(null); setAttachmentName(''); }} className="p-3 bg-red-50 text-red-600 rounded-xl border border-red-200 hover:bg-red-100 active:scale-95 transition-all">
-                                        <X size={18} />
-                                    </button>
-                                )}
-                            </div>
+                            {attachment ? (
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-emerald-50 border-2 border-emerald-300 rounded-xl gap-3">
+                                    <div className="flex items-center gap-3">
+                                        <CheckCircle className="text-emerald-600 shrink-0" size={24} />
+                                        <div>
+                                            <p className="text-sm font-bold text-slate-900 truncate max-w-[220px]">{attachmentName}</p>
+                                            <p className="text-xs text-slate-500 font-mono">{(attachment.size / 1024).toFixed(1)} KB PDF</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-3 sm:gap-2 justify-end mt-2 sm:mt-0 pt-2 sm:pt-0 border-t sm:border-0 border-emerald-200/50">
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setIsScannerOpen(true)} 
+                                            className="text-xs font-bold text-blue-600 hover:underline px-2 py-1"
+                                        >
+                                            Re-scan
+                                        </button>
+                                        <button 
+                                            type="button" 
+                                            onClick={() => { setAttachment(null); setAttachmentName(''); }} 
+                                            className="text-xs font-bold text-red-600 hover:underline px-2 py-1"
+                                        >
+                                            Remove
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={() => setIsScannerOpen(true)}
+                                    className="w-full py-5 border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-2xl flex flex-col items-center justify-center text-slate-600 hover:text-blue-600 hover:bg-blue-50/40 transition-all cursor-pointer active:scale-[0.99]"
+                                >
+                                    <Camera size={26} className="mb-2" />
+                                    <span className="text-sm font-bold">Open Document Scanner</span>
+                                    <span className="text-xs text-slate-400 font-medium">Scan single or multi-page documents</span>
+                                </button>
+                            )}
                         </div>
 
                         <div>
@@ -485,10 +481,10 @@ export default function CreateDocumentModal() {
 
                 {/* Flat Footer Buttons */}
                 <div className="bg-slate-50 p-4 sm:p-5 border-t-2 border-slate-200 flex gap-3 shrink-0 pb-6 sm:pb-5">
-                    <button type="button" disabled={isSubmitting || isProcessingFile} onClick={handleClose} className="flex-1 py-3.5 bg-white border-2 border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-xl active:scale-95 transition-all text-sm sm:text-base disabled:opacity-50 shadow-sm">
+                    <button type="button" disabled={isSubmitting} onClick={handleClose} className="flex-1 py-3.5 bg-white border-2 border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-xl active:scale-95 transition-all text-sm sm:text-base disabled:opacity-50 shadow-sm">
                         Cancel
                     </button>
-                    <button type="submit" disabled={isSubmitting || isProcessingFile} onClick={handleSubmit} className="flex-[1.5] py-3.5 bg-blue-600 border-2 border-blue-700 text-white font-bold rounded-xl active:scale-95 transition-all text-sm sm:text-base flex justify-center items-center gap-2 disabled:opacity-50 shadow-sm hover:bg-blue-700">
+                    <button type="submit" disabled={isSubmitting} onClick={handleSubmit} className="flex-[1.5] py-3.5 bg-blue-600 border-2 border-blue-700 text-white font-bold rounded-xl active:scale-95 transition-all text-sm sm:text-base flex justify-center items-center gap-2 disabled:opacity-50 shadow-sm hover:bg-blue-700">
                         {isSubmitting ? (
                             <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
                         ) : (
@@ -497,6 +493,14 @@ export default function CreateDocumentModal() {
                     </button>
                 </div>
             </div>
+            
+            {/* Render the Scanner Modal on top when active */}
+            {isScannerOpen && (
+                <DocumentScanner
+                    onScanComplete={handleScanComplete}
+                    onClose={() => setIsScannerOpen(false)}
+                />
+            )}
         </div>
     );
 }

@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
 import { legalContents } from './legalDocs'; // <-- Dynamic text import
+import packageJson from '../../package.json';
 
 // --- Shared Modal Animation Styles ---
 const modalAnimationStyles = `
@@ -518,10 +519,10 @@ export default function Settings() {
             </button>
         </div>
 
-        {/* Existing Version Display */}
-        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-            FileTrackr. • v{/* __APP_VERSION__ */}1.1.4
-        </p>
+        {/* Dynamic Version Display */}
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+            FileTrackr. • v{packageJson.version}
+          </p>
       </div>
 
       {/* Password Change Modal */}
