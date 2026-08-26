@@ -1,4 +1,4 @@
-# 📂 ClearTrack Document Tracker
+# 📂 Filetrackr Document Management System
 
 ![Version](https://img.shields.io/badge/version-1.1.8-blue.svg)
 ![React](https://img.shields.io/badge/React-19.2.8-61DAFB.svg?logo=react)
