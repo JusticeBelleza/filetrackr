@@ -5,7 +5,7 @@
 ![Tailwind](https://img.shields.io/badge/Tailwind_CSS-4.3.3-38B2AC.svg?logo=tailwind-css)
 ![Supabase](https://img.shields.io/badge/Supabase-Powered-3ECF8E.svg?logo=supabase)
 
-A modern, real-time document routing and tracking system built for the Provincial Health Office. ClearTrack eliminates lost paperwork by providing a strict digital trail, electronic signatures, and real-time accountability for every document moving through the organization.
+A modern, real-time document routing and tracking system built for the Provincial Health Office. Filetrackr eliminates lost paperwork by providing a strict digital trail, electronic signatures, and real-time accountability for every document moving through the organization.
 
 ---
 
@@ -110,7 +110,7 @@ For the complete database schema and RLS policies, see:
 
 ```text
 ┌──────────────────────────────┐
-│        ClearTrack PWA        │
+│        Filetrackr PWA        │
 │                              │
 │  React + Vite + Tailwind CSS │
 │  React Query + Zustand       │
@@ -138,7 +138,7 @@ For the complete database schema and RLS policies, see:
 
 ## 🔐 Security
 
-ClearTrack follows a zero-trust security model.
+Filetrackr follows a zero-trust security model.
 
 Security mechanisms include:
 

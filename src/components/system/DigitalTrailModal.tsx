@@ -19,14 +19,41 @@ interface SignatureModalState extends SignatureData {
     actionLabel: string;
 }
 
-// --- TAT CALCULATION HELPER ---
+// --- TAT CALCULATION HELPER (EXCLUDES WEEKENDS) ---
 const calculateTAT = (currentDate: string, previousDate?: string): string | null => {
     if (!previousDate) return null;
     
-    const diffMs = new Date(currentDate).getTime() - new Date(previousDate).getTime();
-    if (diffMs < 0) return null; 
+    const start = new Date(previousDate);
+    const end = new Date(currentDate);
     
-    const diffMins = Math.floor(diffMs / 60000);
+    if (end < start) return null; 
+
+    let totalWorkingMs = 0;
+    let current = new Date(start);
+
+    // Loop through the time block day by day to filter out weekends
+    while (current < end) {
+        const dayOfWeek = current.getDay();
+        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6; // 0 = Sunday, 6 = Saturday
+
+        // Find the next midnight to calculate the chunk of time for the current day
+        const nextMidnight = new Date(current);
+        nextMidnight.setHours(24, 0, 0, 0); 
+
+        // If the end date happens before midnight, stop exactly at the end date
+        const nextStep = nextMidnight < end ? nextMidnight : end;
+        const timeDiff = nextStep.getTime() - current.getTime();
+
+        // Only add the milliseconds if it is a Monday-Friday
+        if (!isWeekend) {
+            totalWorkingMs += timeDiff;
+        }
+
+        // Move to the next chunk
+        current = nextStep;
+    }
+
+    const diffMins = Math.floor(totalWorkingMs / 60000);
     if (diffMins < 1) return '< 1m';
     
     const days = Math.floor(diffMins / (24 * 60));
@@ -177,23 +204,37 @@ export default function DigitalTrailModal({ doc, onBack }: DocumentTrailProps) {
                             const dateStr = dateObj.toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' });
                             const timeStr = dateObj.toLocaleTimeString('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' });
 
-                            // --- NEW: Calculate Turnaround Time from the previous step ---
-                            const prevLog = events[index + 1];
-                            const tatString = prevLog ? calculateTAT(log.created_at, prevLog.created_at) : null;
+                            // --- NORMALIZATION: Translate legacy "In transit" database rows to "Document Received" ---
+                            const actionName = log.action === 'In transit' ? 'Document Received' : log.action;
+
+                            // --- CORRECTED: Calculate Turnaround Time (How long it STAYED at this step) ---
+                            // Because events are sorted newest-first, the event that happened AFTER this one is at index - 1
+                            const newerLog = events[index - 1];
+                            let tatString = null;
+                            let tatTooltip = "Time spent at this step before routing";
+
+                            if (newerLog) {
+                                // Calculate time difference between this log and the next action
+                                tatString = calculateTAT(newerLog.created_at, log.created_at);
+                            } else if (actionName !== 'Delivered' && actionName !== 'Cancelled' && actionName !== 'Returned') {
+                                // If this is the newest step and it's not finished, show current idle time!
+                                tatString = calculateTAT(new Date().toISOString(), log.created_at);
+                                tatTooltip = "Current time pending at this location";
+                            }
 
                             let icon = <div className="w-2 h-2 bg-slate-400 rounded-full"></div>;
                             let nodeBg = 'bg-slate-200';
                             let titleColor = 'text-slate-900';
 
                             // --- ASSIGN COLORS & ICONS BASED ON ACTION ---
-                            if (log.action === 'Delivered') { icon = <Check size={14} strokeWidth={4} className="text-white" />; nodeBg = 'bg-emerald-500'; titleColor = 'text-emerald-700'; } 
-                            else if (log.action === 'Cancelled') { icon = <Ban size={14} strokeWidth={3} className="text-white" />; nodeBg = 'bg-rose-500'; titleColor = 'text-rose-700'; }
-                            else if (log.action === 'Returned') { icon = <X size={14} strokeWidth={4} className="text-white" />; nodeBg = 'bg-red-500'; titleColor = 'text-red-700'; } 
-                            else if (log.action === 'Resubmitted') { icon = <RefreshCcw size={14} strokeWidth={3} className="text-white" />; nodeBg = 'bg-indigo-500'; titleColor = 'text-indigo-700'; }
-                            else if (log.action === 'In transit') { icon = <ArrowRight size={14} strokeWidth={3} className="text-white" />; nodeBg = 'bg-blue-500'; titleColor = 'text-blue-700'; } 
-                            else if (log.action === 'Re-routed') { icon = <Send size={14} strokeWidth={3} className="text-white" />; nodeBg = 'bg-blue-600'; titleColor = 'text-blue-800'; } 
-                            else if (log.action === 'Document Logged' || log.action === 'Created') { icon = <Check size={14} strokeWidth={4} className="text-white" />; nodeBg = 'bg-slate-700'; titleColor = 'text-slate-800'; }
-                            else if (log.action === 'REASSIGNED') { icon = <UserPlus size={14} strokeWidth={3} className="text-white" />; nodeBg = 'bg-amber-500'; titleColor = 'text-amber-700'; }
+                            if (actionName === 'Delivered') { icon = <Check size={14} strokeWidth={4} className="text-white" />; nodeBg = 'bg-emerald-500'; titleColor = 'text-emerald-700'; } 
+                            else if (actionName === 'Cancelled') { icon = <Ban size={14} strokeWidth={3} className="text-white" />; nodeBg = 'bg-rose-500'; titleColor = 'text-rose-700'; }
+                            else if (actionName === 'Returned') { icon = <X size={14} strokeWidth={4} className="text-white" />; nodeBg = 'bg-red-500'; titleColor = 'text-red-700'; } 
+                            else if (actionName === 'Resubmitted') { icon = <RefreshCcw size={14} strokeWidth={3} className="text-white" />; nodeBg = 'bg-indigo-500'; titleColor = 'text-indigo-700'; }
+                            else if (actionName === 'Document Received') { icon = <ArrowRight size={14} strokeWidth={3} className="text-white" />; nodeBg = 'bg-blue-500'; titleColor = 'text-blue-700'; } 
+                            else if (actionName === 'Re-routed') { icon = <Send size={14} strokeWidth={3} className="text-white" />; nodeBg = 'bg-blue-600'; titleColor = 'text-blue-800'; } 
+                            else if (actionName === 'Document Logged' || actionName === 'Created') { icon = <Check size={14} strokeWidth={4} className="text-white" />; nodeBg = 'bg-slate-700'; titleColor = 'text-slate-800'; }
+                            else if (actionName === 'REASSIGNED') { icon = <UserPlus size={14} strokeWidth={3} className="text-white" />; nodeBg = 'bg-amber-500'; titleColor = 'text-amber-700'; }
 
                             // Formats lines with colons (e.g. "Reason: Because...") to be bold
                             const formatDescription = (text?: string) => {
@@ -210,22 +251,22 @@ export default function DigitalTrailModal({ doc, onBack }: DocumentTrailProps) {
                             let desc = '';
                             
                             // --- COMPILE DESCRIPTIONS ---
-                            if (log.action === 'Document Logged' || log.action === 'Created') desc = `Location: ${log.location}\nCreated By: ${creatorName}`;
-                            if (log.action === 'In transit') desc = `Arrived at: ${log.location}\nReceived By: ${log.assigned_to}`;
-                            if (log.action === 'Returned') desc = `Returned to: ${log.location}\nReason: ${log.remarks}`;
-                            if (log.action === 'Delivered') { desc = `Secured At: ${log.location}`; if (log.remarks) desc += `\n${log.remarks}`; }
-                            if (log.action === 'REASSIGNED') desc = `Location: ${log.location}\nDetails: ${log.remarks}`;
-                            if (log.action === 'Cancelled') desc = `Location: ${log.location}\n${log.remarks}`;
-                            if (log.action === 'Resubmitted') desc = `Location: ${log.location}\n${log.remarks}`;
-                            if (log.action === 'Re-routed') desc = `Re-routed to: ${log.location}\nAssigned to: ${log.assigned_to}\nRemarks: ${log.remarks}`;
+                            if (actionName === 'Document Logged' || actionName === 'Created') desc = `Location: ${log.location}\nCreated By: ${creatorName}`;
+                            if (actionName === 'Document Received') desc = `Arrived at: ${log.location}\nReceived By: ${log.assigned_to}`;
+                            if (actionName === 'Returned') desc = `Returned to: ${log.location}\nReason: ${log.remarks}`;
+                            if (actionName === 'Delivered') { desc = `Secured At: ${log.location}`; if (log.remarks) desc += `\n${log.remarks}`; }
+                            if (actionName === 'REASSIGNED') desc = `Location: ${log.location}\nDetails: ${log.remarks}`;
+                            if (actionName === 'Cancelled') desc = `Location: ${log.location}\n${log.remarks}`;
+                            if (actionName === 'Resubmitted') desc = `Location: ${log.location}\n${log.remarks}`;
+                            if (actionName === 'Re-routed') desc = `Re-routed to: ${log.location}\nAssigned to: ${log.assigned_to}\nRemarks: ${log.remarks}`;
 
                             // --- Determine Action Label and Name for Signature ---
                             let sigActionLabel = "Signed By";
                             let sigName = log.assigned_to || creatorName || 'Authorized Personnel';
 
-                            if (log.action === 'In transit') {
+                            if (actionName === 'Document Received') {
                                 sigActionLabel = "Received By";
-                            } else if (log.action === 'Delivered') {
+                            } else if (actionName === 'Delivered') {
                                 sigActionLabel = "Released By";
                                 // Extract the person who actively released it from the remarks
                                 if (log.remarks) {
@@ -234,20 +275,20 @@ export default function DigitalTrailModal({ doc, onBack }: DocumentTrailProps) {
                                         sigName = releasedMatch[1].trim();
                                     }
                                 }
-                            } else if (log.action === 'Returned') {
+                            } else if (actionName === 'Returned') {
                                 sigActionLabel = "Returned By";
                             }
 
                             return (
                                 <div key={index} className="flex gap-4 relative w-full animate-in fade-in duration-300" style={{ animationFillMode: 'both', animationDelay: `${index * 50}ms` }}>
                                     
-                                    {/* UPDATED: Left Column with TAT Badge */}
+                                    {/* Left Column with TAT Badge */}
                                     <div className="w-20 shrink-0 flex flex-col items-end text-right pt-0.5">
                                         <span className="text-[11px] font-bold text-slate-600 uppercase tracking-tight leading-tight">{dateStr}</span>
                                         <span className="text-[10px] font-medium text-slate-400 mt-0.5">{timeStr}</span>
                                         
                                         {tatString && (
-                                            <div className="mt-2 flex items-center gap-1 text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded shadow-sm" title="Time taken since previous step">
+                                            <div className="mt-2 flex items-center gap-1 text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded shadow-sm" title={tatTooltip}>
                                                 <Timer size={10} strokeWidth={3} />
                                                 {tatString}
                                             </div>
@@ -259,7 +300,7 @@ export default function DigitalTrailModal({ doc, onBack }: DocumentTrailProps) {
                                         <div className={`relative z-10 w-[22px] h-[22px] mt-0.5 rounded-full flex items-center justify-center ${nodeBg}`}>{icon}</div>
                                     </div>
                                     <div className="flex-1 pb-10 min-w-0 pr-1">
-                                        <h4 className={`text-sm font-bold leading-none mb-1.5 ${titleColor}`}>{log.action}</h4>
+                                        <h4 className={`text-sm font-bold leading-none mb-1.5 ${titleColor}`}>{actionName}</h4>
                                         <div className="text-sm text-slate-600 leading-relaxed">{formatDescription(desc)}</div>
                                         
                                         {/* Attachment & Signature Buttons - Forced Side-by-Side Flex Row */}
@@ -326,7 +367,8 @@ function SignatureModal({ data, onClose }: { data: SignatureModalState, onClose:
 
     return (
         <div className={`fixed inset-0 z-[1000] flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/80 backdrop-blur-sm ${overlayAnimation}`}>
-            <div className={`bg-white w-full max-w-sm flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.5)] rounded-t-[2rem] sm:rounded-3xl overflow-hidden ${modalAnimation}`}>
+            {/* CHANGED: max-w-sm is now max-w-md to match the main modal and cover the width of the screen */}
+            <div className={`bg-white w-full max-w-md flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.5)] rounded-t-[2rem] sm:rounded-3xl overflow-hidden ${modalAnimation}`}>
                 
                 {/* Header */}
                 <div className="bg-slate-900 p-4 flex items-center justify-between text-white shrink-0 relative">

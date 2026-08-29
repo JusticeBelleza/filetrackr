@@ -39,14 +39,41 @@ export default function DocumentCard({
     const canReassign = isManager || isCreator;
     const canRevise = isManager || isCreator;
 
-    // Helper for aging computation
-    const now = new Date().getTime(); 
-    const updatedTime = new Date(localDoc.updated_at || localDoc.created_at).getTime();
-    const diffHours = (now - updatedTime) / (1000 * 60 * 60); 
+    // ----------------------------------------------------
+    // Helper for aging computation (Excludes Weekends)
+    // ----------------------------------------------------
+    const start = new Date(localDoc.updated_at || localDoc.created_at);
+    const end = new Date(); // now
+    
+    let totalWorkingMs = 0;
+    
+    if (end > start) {
+        let current = new Date(start);
+        while (current < end) {
+            const dayOfWeek = current.getDay();
+            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6; // 0 = Sunday, 6 = Saturday
+
+            const nextMidnight = new Date(current);
+            nextMidnight.setHours(24, 0, 0, 0);
+
+            const nextStep = nextMidnight < end ? nextMidnight : end;
+            const timeDiff = nextStep.getTime() - current.getTime();
+
+            // Only add the time if it's a weekday
+            if (!isWeekend) {
+                totalWorkingMs += timeDiff;
+            }
+            current = nextStep;
+        }
+    }
+
+    const diffHours = totalWorkingMs / (1000 * 60 * 60); 
     const days = Math.floor(diffHours / 24); 
     const remainingHrs = Math.floor(diffHours % 24);
     const displayTime = `${days.toString().padStart(2, '0')}d:${remainingHrs.toString().padStart(2, '0')}h`;
+    
     let agingColorTheme = "bg-slate-100 text-slate-600 border-slate-200"; 
+    // Color thresholds are now based strictly on working hours (72 working hours = 3 business days)
     if (diffHours >= 72) { agingColorTheme = "bg-rose-50 text-rose-700 border-rose-200 animate-pulse"; } 
     else if (diffHours >= 48) { agingColorTheme = "bg-amber-50 text-amber-700 border-amber-200"; }
 
@@ -106,9 +133,9 @@ export default function DocumentCard({
                                     </button>
                                 )}
                                 {onRevise && (
-                                    <button onClick={() => onRevise(localDoc)} className="flex-[2.5] py-2.5 px-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all active:scale-95 text-sm border-2 border-amber-700 shadow-sm">
-                                        Revise & Resubmit
-                                    </button>
+                                <button onClick={() => onRevise(localDoc)} className="flex-[2.5] py-2.5 px-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all active:scale-95 text-sm border-2 border-amber-700 shadow-sm">
+                                Revise & Resubmit
+                                </button>
                                 )}
                             </div>
                         ) : (

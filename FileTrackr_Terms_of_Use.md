@@ -81,4 +81,4 @@ For technical support, password resets, or to report system errors, users must c
 
 #### 15. Changes to the Terms
 The Abra Provincial Health Office reserves the right to amend these Terms. Material changes to system rules will be communicated via administrative memorandum or an in-app notification upon your next login.
-*   **Current Version:** 1.1.7 (August 2026)
+*   **Current Version:** 1.1.8 (August 2026)
