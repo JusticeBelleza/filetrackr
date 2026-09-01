@@ -7,9 +7,10 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-// --- Import React Query Hooks ---
+// --- Import React Query Hooks & Components ---
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
+import StorageMonitor from '../components/system/StorageMonitor'; // <-- NEW IMPORT
 
 // --- Shared Modal Animation Styles ---
 const modalAnimationStyles = `
@@ -235,7 +236,6 @@ export default function SystemAdmin() {
   }
 
   const handleGeneratePassword = () => {
-      // FIX: Used crypto API instead of Math.random to satisfy strict linters
       const array = new Uint32Array(1);
       window.crypto.getRandomValues(array);
       const pass = 'User@' + (1000 + (array[0] % 9000));
@@ -337,7 +337,6 @@ export default function SystemAdmin() {
         let displayMessage = error?.message || data?.error || 'Registration Failed';
         
         try {
-            // FIX: Typed the error object to remove 'any' warning
             const errObj = error as { context?: { json?: () => Promise<{ error?: string }> } };
             if (errObj?.context?.json) {
                 const bodyJson = await errObj.context.json();
@@ -387,7 +386,6 @@ export default function SystemAdmin() {
 
   // Reset Password Handlers
   const openResetPasswordModal = (emp: EmployeeData) => {
-      // FIX: Used crypto API instead of Math.random
       const array = new Uint32Array(1);
       window.crypto.getRandomValues(array);
       const generatedPass = '@User' + (1000 + (array[0] % 9000));
@@ -496,6 +494,16 @@ export default function SystemAdmin() {
             <StatCard title="Active Employees" value={employees.length} icon={<Users className="text-blue-600" />} color="bg-blue-50 border-blue-200" />
             <StatCard title="Doc Categories" value={categories.length} icon={<FolderTree className="text-indigo-600" />} color="bg-indigo-50 border-indigo-200" />
             <StatCard title="Audit Logs" value={auditLogs.length} icon={<ClipboardList className="text-orange-600" />} color="bg-orange-50 border-orange-200" />
+          </div>
+
+          {/* Admin Dashboard Widgets Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+            <div className="lg:col-span-1">
+              <StorageMonitor />
+            </div>
+            <div className="lg:col-span-2">
+              {/* Future space reserved for TAT leaderboards and metrics */}
+            </div>
           </div>
         </div>
       )}
