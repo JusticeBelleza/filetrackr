@@ -41,11 +41,13 @@ const router = createBrowserRouter([
   {
     path: '/login',
     element: <Suspense fallback={<PageSkeleton />}><Login /></Suspense>,
+    errorElement: <GlobalErrorBoundary />, // Catch chunk errors on the login page
   },
   // Private Routes (Wrapped in static AppLayout)
   {
     path: '/',
     element: <AppLayout />,
+    errorElement: <GlobalErrorBoundary />, // Catch chunk errors inside the app
     children: [
       { index: true, element: <Navigate to="/dashboard" replace /> },
       { path: 'dashboard', element: <Suspense fallback={<PageSkeleton />}><Dashboard /></Suspense> },
@@ -64,11 +66,9 @@ const router = createBrowserRouter([
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <GlobalErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-        <Toaster position="top-center" richColors />
-      </QueryClientProvider>
-    </GlobalErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+      <Toaster position="top-center" richColors />
+    </QueryClientProvider>
   </StrictMode>
 );
