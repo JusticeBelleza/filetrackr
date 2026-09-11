@@ -204,20 +204,15 @@ export default function DigitalTrailModal({ doc, onBack }: DocumentTrailProps) {
                             const dateStr = dateObj.toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' });
                             const timeStr = dateObj.toLocaleTimeString('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' });
 
-                            // --- NORMALIZATION: Translate legacy "In transit" database rows to "Document Received" ---
                             const actionName = log.action === 'In transit' ? 'Document Received' : log.action;
 
-                            // --- CORRECTED: Calculate Turnaround Time (How long it STAYED at this step) ---
-                            // Because events are sorted newest-first, the event that happened AFTER this one is at index - 1
                             const newerLog = events[index - 1];
                             let tatString = null;
                             let tatTooltip = "Time spent at this step before routing";
 
                             if (newerLog) {
-                                // Calculate time difference between this log and the next action
                                 tatString = calculateTAT(newerLog.created_at, log.created_at);
                             } else if (actionName !== 'Delivered' && actionName !== 'Cancelled' && actionName !== 'Returned') {
-                                // If this is the newest step and it's not finished, show current idle time!
                                 tatString = calculateTAT(new Date().toISOString(), log.created_at);
                                 tatTooltip = "Current time pending at this location";
                             }
@@ -252,8 +247,19 @@ export default function DigitalTrailModal({ doc, onBack }: DocumentTrailProps) {
                             
                             // --- COMPILE DESCRIPTIONS ---
                             if (actionName === 'Document Logged' || actionName === 'Created') desc = `Location: ${log.location}\nCreated By: ${creatorName}`;
-                            if (actionName === 'Document Received') desc = `Arrived at: ${log.location}\nReceived By: ${log.assigned_to}`;
-                            if (actionName === 'Returned') desc = `Returned to: ${log.location}\nReason: ${log.remarks}`;
+                            if (actionName === 'Document Received') desc = `Location: ${log.location}\nReceived By: ${log.assigned_to}`; 
+                            
+                            // --- THE SMART RETURN FIX ---
+                            if (actionName === 'Returned') {
+                                if (log.remarks?.includes('Declined by:')) {
+                                    // It's a Handshake decline, it already has perfect formatting. Don't add "Reason:"
+                                    desc = `Returned to: ${log.location}\n${log.remarks}`;
+                                } else {
+                                    // It's a normal standard reject, so add the "Reason:" label
+                                    desc = `Returned to: ${log.location}\nReason: ${log.remarks}`;
+                                }
+                            }
+
                             if (actionName === 'Delivered') { desc = `Secured At: ${log.location}`; if (log.remarks) desc += `\n${log.remarks}`; }
                             if (actionName === 'REASSIGNED') desc = `Location: ${log.location}\nDetails: ${log.remarks}`;
                             if (actionName === 'Cancelled') desc = `Location: ${log.location}\n${log.remarks}`;
@@ -268,7 +274,6 @@ export default function DigitalTrailModal({ doc, onBack }: DocumentTrailProps) {
                                 sigActionLabel = "Received By";
                             } else if (actionName === 'Delivered') {
                                 sigActionLabel = "Released By";
-                                // Extract the person who actively released it from the remarks
                                 if (log.remarks) {
                                     const releasedMatch = log.remarks.match(/Released By:\s*([^\n]+)/i);
                                     if (releasedMatch && releasedMatch[1]) {
@@ -367,7 +372,6 @@ function SignatureModal({ data, onClose }: { data: SignatureModalState, onClose:
 
     return (
         <div className={`fixed inset-0 z-[1000] flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/80 backdrop-blur-sm ${overlayAnimation}`}>
-            {/* CHANGED: max-w-sm is now max-w-md to match the main modal and cover the width of the screen */}
             <div className={`bg-white w-full max-w-md flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.5)] rounded-t-[2rem] sm:rounded-3xl overflow-hidden ${modalAnimation}`}>
                 
                 {/* Header */}

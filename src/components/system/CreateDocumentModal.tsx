@@ -289,6 +289,9 @@ export default function CreateDocumentModal() {
                 attachmentUrl = data.publicUrl;
             }
 
+            // --- THE UPGRADE: DYNAMIC STATUS FOR DIGITAL HANDSHAKE ---
+            const initialStatus = formData.assignedClerk ? 'pending_receipt' : 'routing';
+
             // 1. Insert Document and get its returned ID (.select().single())
             const { data: newDoc, error } = await supabase.from('documents').insert([{
                 reference_no: formData.trackingNumber,
@@ -298,9 +301,9 @@ export default function CreateDocumentModal() {
                 assigned_clerk: formData.assignedClerk || null,
                 is_urgent: formData.isUrgent,
                 remarks: formData.remarks.trim(),
-                created_by: user.id, // 🔒 THE UPGRADE
+                created_by: user.id, 
                 attachment_url: attachmentUrl,
-                status: 'routing' 
+                status: initialStatus // <-- DYNAMIC STATUS APPLIED HERE
             }]).select().single();
 
             if (error) throw error;
@@ -310,8 +313,9 @@ export default function CreateDocumentModal() {
                 document_id: newDoc.id,
                 action: 'Document Logged',
                 location: currentUserDept || 'Originating Office',
+                assigned_to: formData.assignedClerk || null, // <-- LOGS THE PERSON YOU HANDED IT TO
                 attachment_url: attachmentUrl,
-                created_by: user.id // 🔒 THE UPGRADE
+                created_by: user.id 
             }]);
 
             toast.success('Document Routed Successfully!', { description: `Tracking No: ${formData.trackingNumber}` });

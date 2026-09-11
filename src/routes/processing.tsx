@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, X, Activity, CornerUpLeft, RefreshCw, CheckCircle, MapPin, Layers } from 'lucide-react';
+import { Search, X, Activity, CornerUpLeft, RefreshCw, CheckCircle, MapPin, Layers, Ban } from 'lucide-react';
+import { toast } from 'sonner';
 import { supabase } from '../lib/supabase';
 import type { ProcessingData, DocumentItem } from '../types/processing';
 
@@ -15,7 +16,7 @@ import CancelModal from '../components/processing/CancelModal';
 import ReRouteModal from '../components/processing/ReRouteModal';
 
 // --- DATA FETCHING FUNCTION ---
-const fetchProcessingData = async (): Promise<ProcessingData> => {
+const fetchProcessingData = async (): Promise<ProcessingData & { currentUserDept: string }> => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error("No authenticated session");
 
@@ -24,9 +25,12 @@ const fetchProcessingData = async (): Promise<ProcessingData> => {
     const currentUserName = profile?.full_name || '';
 
     let colleagues: string[] = [];
+    let currentUserDept = '';
+    
     if (currentUserName) {
         const { data: empData } = await supabase.from('employees').select('department').eq('name', currentUserName).single();
         if (empData?.department) {
+            currentUserDept = empData.department;
             const { data: deptEmps } = await supabase.from('employees').select('name').eq('department', empData.department);
             if (deptEmps) colleagues = deptEmps.map(e => e.name);
         }
@@ -51,10 +55,10 @@ const fetchProcessingData = async (): Promise<ProcessingData> => {
 
         const sortedDocs = myActiveDocs.sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime());
         returned = sortedDocs.filter((d) => d.status === 'pending' && d.remarks);
-        processing = sortedDocs.filter((d) => d.status === 'routing' || (d.status === 'pending' && !d.remarks));
+        processing = sortedDocs.filter((d) => d.status === 'routing' || d.status === 'pending_receipt' || (d.status === 'pending' && !d.remarks));
     }
 
-    return { processing, returned, departments, currentUserName, currentUserId, colleagues, allEmployeesList };
+    return { processing, returned, departments, currentUserName, currentUserId, currentUserDept, colleagues, allEmployeesList };
 };
 
 export default function Processing() {
@@ -64,7 +68,6 @@ export default function Processing() {
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
   const [selectedDocs, setSelectedDocs] = useState<DocumentItem[]>([]);
   
-  // --- UPGRADED BATCH ACTIONS STATE ---
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
   const [isBatchMenuClosing, setIsBatchMenuClosing] = useState(false);
   
@@ -75,12 +78,15 @@ export default function Processing() {
   const [reassignDoc, setReassignDoc] = useState<DocumentItem | null>(null);
   const [cancelDoc, setCancelDoc] = useState<DocumentItem | null>(null);
   const [reRouteDoc, setReRouteDoc] = useState<DocumentItem | null>(null);
+  
+  // Handshake Modals
+  const [declineDoc, setDeclineDoc] = useState<DocumentItem | null>(null);
+  const [receiveDoc, setReceiveDoc] = useState<DocumentItem | null>(null);
 
   const [lastViewedProcessing, setLastViewedProcessing] = useState(() => localStorage.getItem('filetrackr_viewed_processing') || '0');
   const [lastViewedReturned, setLastViewedReturned] = useState(() => localStorage.getItem('filetrackr_viewed_returned') || '0');
 
-  // --- REFETCH TRIGGERS ON MOUNT AND WINDOW FOCUS ---
-  const { data, isLoading, isFetching, refetch } = useQuery<ProcessingData>({
+  const { data, isLoading, isFetching, refetch } = useQuery<ProcessingData & { currentUserDept: string }>({
       queryKey: ['processingDocuments'],
       queryFn: fetchProcessingData,
       refetchInterval: 60000, 
@@ -88,7 +94,6 @@ export default function Processing() {
       refetchOnWindowFocus: true,
   });
 
-  // --- UPGRADED REALTIME UPDATES (SILENT) ---
   useEffect(() => {
       const channel = supabase.channel('public:documents')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'documents' }, () => {
@@ -147,14 +152,13 @@ export default function Processing() {
       return data.colleagues;
   }, [data, reassignDoc]);
 
-  // SMOOTH MODAL CLOSING HANDLER
   const handleToggleBatchMenu = () => {
       if (isBatchModalOpen) {
           setIsBatchMenuClosing(true);
           setTimeout(() => {
               setIsBatchMenuClosing(false);
               setIsBatchModalOpen(false);
-          }, 200); // Wait for the menu's fade-out animation to finish
+          }, 200); 
       } else {
           setIsBatchModalOpen(true);
       }
@@ -278,6 +282,8 @@ export default function Processing() {
                                                 onAction={(d: DocumentItem) => setSelectedDoc(d)}
                                                 onCancel={(d: DocumentItem) => setCancelDoc(d)}
                                                 onRevise={(d: DocumentItem) => setReRouteDoc(d)}
+                                                onReceive={(d: DocumentItem) => setReceiveDoc(d)}
+                                                onDecline={(d: DocumentItem) => setDeclineDoc(d)}
                                               />
                                           ))}
                                       </div>
@@ -301,6 +307,8 @@ export default function Processing() {
                             onReassign={(d: DocumentItem) => setReassignDoc(d)} 
                             onCancel={(d: DocumentItem) => setCancelDoc(d)}
                             onRevise={(d: DocumentItem) => setReRouteDoc(d)}
+                            onReceive={(d: DocumentItem) => setReceiveDoc(d)}
+                            onDecline={(d: DocumentItem) => setDeclineDoc(d)}
                           />
                       ))}
                   </div>
@@ -308,24 +316,18 @@ export default function Processing() {
           )}
       </div>
 
-      {/* FAB - PERFECTLY NATIVE MORPHING TOGGLE */}
       {activeTab === 'processing' && (
           <div className={`fixed bottom-6 right-6 sm:bottom-8 sm:right-8 z-[1000] flex flex-col items-end transition-all duration-500 ease-[cubic-bezier(0.175,0.885,0.32,1.275)] ${selectedDocs.length > 0 ? 'opacity-100 scale-100 translate-y-0 pointer-events-auto' : 'opacity-0 scale-50 translate-y-12 pointer-events-none'}`}>
               <button 
                   onClick={handleToggleBatchMenu} 
                   className="relative flex items-center justify-center w-14 h-14 bg-teal-700 hover:bg-teal-800 text-white rounded-[1.25rem] shadow-lg shadow-teal-900/30 transition-all active:scale-95 z-10 group"
               >
-                  {/* Layers Icon */}
                   <div className={`absolute inset-0 flex items-center justify-center transition-all duration-300 ${isBatchModalOpen ? 'opacity-0 -rotate-90 scale-50' : 'opacity-100 rotate-0 scale-100'}`}>
                       <Layers size={24} strokeWidth={2.5} className="group-hover:scale-110 transition-transform" />
                   </div>
-
-                  {/* X Icon */}
                   <div className={`absolute inset-0 flex items-center justify-center transition-all duration-300 ${isBatchModalOpen && !isBatchMenuClosing ? 'opacity-100 rotate-0 scale-100' : 'opacity-0 rotate-90 scale-50'}`}>
                       <X size={26} strokeWidth={2.5} />
                   </div>
-
-                  {/* Perfectly Unclipped Badge */}
                   <span className={`absolute -top-2 -right-2 bg-rose-500 text-white text-[10px] font-black w-6 h-6 flex items-center justify-center rounded-full shadow-sm ring-2 ring-white transition-all duration-300 ${isBatchModalOpen ? 'opacity-0 scale-50' : 'opacity-100 scale-100'}`}>
                       {selectedDocs.length}
                   </span>
@@ -333,7 +335,6 @@ export default function Processing() {
           </div>
       )}
 
-      {/* The Modal Component now relies on Processing.tsx for its closing states */}
       {isBatchModalOpen && (
           <BatchActionModal 
             selectedDocs={selectedDocs} 
@@ -361,12 +362,16 @@ export default function Processing() {
       {selectedDoc && <HandoverScreen doc={selectedDoc} departments={departments} onBack={() => setSelectedDoc(null)} onSuccess={() => refetch()} />}
       {trailDoc && <DigitalTrailModal doc={trailDoc} onBack={() => setTrailDoc(null)} />}
       {previewDocUrl && <FilePreviewModal url={previewDocUrl} onClose={() => setPreviewDocUrl(null)} />}
+      
+      {/* THE HANDSHAKE MODALS */}
+      {declineDoc && <DeclineModal doc={declineDoc} currentUserName={data?.currentUserName || ''} onClose={() => setDeclineDoc(null)} onSuccess={() => refetch()} />}
+      {receiveDoc && <ReceiveModal doc={receiveDoc} currentUserDept={data?.currentUserDept || ''} currentUserName={data?.currentUserName || ''} onClose={() => setReceiveDoc(null)} onSuccess={() => refetch()} />}
     </div>
   );
 }
 
 // ==========================================
-// INLINE HELPERS
+// INLINE HELPERS & MODALS
 // ==========================================
 
 function TabButton({ label, icon, count, isActive, onClick, colorClass, badgeClass, newCount = 0 }: { label: string, icon: React.ReactNode, count: number, isActive: boolean, onClick: () => void, colorClass: string, badgeClass: string, newCount?: number }) {
@@ -379,5 +384,212 @@ function TabButton({ label, icon, count, isActive, onClick, colorClass, badgeCla
                 {newCount > 0 && !isActive && <span className="text-[9px] font-black text-white bg-red-500 px-1.5 py-0.5 rounded shadow-sm animate-in zoom-in flex items-center">{newCount} NEW</span>}
             </div>
         </button>
+    );
+}
+
+// ==========================================
+// RECEIVE CONFIRMATION MODAL (RPC IMPLEMENTATION)
+// ==========================================
+interface ReceiveModalProps {
+    doc: DocumentItem;
+    currentUserDept: string;
+    currentUserName: string;
+    onClose: () => void;
+    onSuccess: () => void;
+}
+
+function ReceiveModal({ doc, currentUserDept, currentUserName, onClose, onSuccess }: ReceiveModalProps) {
+    const [isReceiving, setIsReceiving] = useState(false);
+    const [isClosing, setIsClosing] = useState(false);
+
+    const handleClose = () => {
+        setIsClosing(true);
+        setTimeout(() => onClose(), 200);
+    };
+
+    const handleConfirm = async () => {
+        setIsReceiving(true);
+        try {
+            const { data: { user } } = await supabase.auth.getUser(); 
+            const newLocation = currentUserDept || doc.current_location;
+            
+            const { error: rpcError } = await supabase.rpc('process_document_action', {
+                p_doc_id: doc.id,
+                p_log_action: 'Document Received',
+                p_log_location: newLocation,
+                p_log_created_by: user?.id,
+                p_log_assigned_to: currentUserName,
+                p_log_remarks: 'Digital handshake completed. Custody accepted.',
+                p_new_status: 'routing',
+                p_new_location: newLocation
+            });
+            
+            if (rpcError) throw rpcError;
+
+            toast.success("Document Received", { description: "You have officially accepted custody." });
+            onSuccess();
+            handleClose();
+        } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message : "An unknown error occurred.";
+            toast.error("Handshake Failed", { description: errorMessage });
+        } finally {
+            setIsReceiving(false);
+        }
+    };
+
+    return (
+        <div className={`fixed inset-0 z-[1050] flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/70 backdrop-blur-sm transition-all ${isClosing ? 'animate-out fade-out duration-200 fill-mode-forwards' : 'animate-in fade-in duration-200'}`}>
+            <div className={`bg-white w-full max-w-md flex flex-col overflow-hidden shadow-2xl rounded-t-[1.5rem] sm:rounded-3xl ${isClosing ? 'animate-out slide-out-to-bottom-[100%] sm:slide-out-to-bottom-0 sm:zoom-out-95 duration-200 fill-mode-forwards' : 'animate-in slide-in-from-bottom-[100%] sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-300'}`}>
+                
+                <div className="text-emerald-600 bg-emerald-50 border-b border-emerald-100 relative flex flex-col shrink-0">
+                    <div className="w-16 h-1.5 bg-emerald-200 rounded-full mx-auto mt-3 sm:hidden shrink-0"></div>
+                    <div className="p-5 pt-3 sm:pt-6 flex items-center justify-between">
+                        <div className="w-10"></div> 
+                        <h3 className="font-black text-xl tracking-tight absolute left-1/2 -translate-x-1/2 whitespace-nowrap">Receive Document</h3>
+                        <button onClick={handleClose} disabled={isReceiving} className="p-2 -mr-2 bg-emerald-100 hover:bg-emerald-200 rounded-full transition-all active:scale-90 disabled:opacity-50">
+                            <X size={20} className="text-emerald-700" />
+                        </button>
+                    </div>
+                </div>
+                
+                <div className="p-6 sm:p-8 space-y-4 bg-white text-center">
+                    <div className="mx-auto w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mb-2">
+                        <CheckCircle size={32} className="text-emerald-600" />
+                    </div>
+                    <h4 className="text-lg font-bold text-slate-900 leading-tight">Confirm Receipt</h4>
+                    <p className="text-sm text-slate-600 font-medium">
+                        By confirming, you formally accept custody of <strong className="text-slate-800">{doc.reference_no}</strong>. This will be logged in the digital trail.
+                    </p>
+                </div>
+                
+                <div className="bg-slate-50 p-4 sm:p-5 flex gap-3 shrink-0 border-t border-slate-200">
+                    <button onClick={handleClose} disabled={isReceiving} className="flex-1 py-3.5 bg-white border-2 border-slate-300 text-slate-700 font-bold rounded-xl active:scale-95 transition-all text-sm">Cancel</button>
+                    <button 
+                        onClick={handleConfirm} 
+                        disabled={isReceiving} 
+                        className="flex-[1.5] py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl active:scale-95 transition-all text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:bg-emerald-400 shadow-sm"
+                    >
+                        {isReceiving ? <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> : 'Yes, Receive Document'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ==========================================
+// DECLINE MODAL COMPONENT (RPC IMPLEMENTATION)
+// ==========================================
+interface DeclineModalProps {
+    doc: DocumentItem;
+    currentUserName: string;
+    onClose: () => void;
+    onSuccess: () => void;
+}
+
+function DeclineModal({ doc, currentUserName, onClose, onSuccess }: DeclineModalProps) {
+    const [reason, setReason] = useState("");
+    const [isDeclining, setIsDeclining] = useState(false);
+    const [isClosing, setIsClosing] = useState(false);
+
+    const handleClose = () => {
+        setIsClosing(true);
+        setTimeout(() => onClose(), 200);
+    };
+
+    const handleConfirm = async () => {
+        if (!reason.trim()) {
+            toast.error("Reason Required", { description: "Please provide a reason for declining." });
+            return;
+        }
+
+        setIsDeclining(true);
+        try {
+            const { data: { user } } = await supabase.auth.getUser(); 
+            
+            let creatorName = 'Creator / Sender';
+            let originOffice = 'Originating Office';
+            
+            if (doc.created_by) {
+                try {
+                    const { data: creatorData } = await supabase.from('profiles').select('full_name').eq('id', doc.created_by).single();
+                    if (creatorData?.full_name) {
+                        creatorName = creatorData.full_name;
+                        const { data: empData } = await supabase.from('employees').select('department').eq('name', creatorName).single();
+                        if (empData?.department) originOffice = empData.department;
+                    }
+                } catch (e) {
+                    console.warn("Could not fetch creator details", e);
+                }
+            }
+            
+            const { error: rpcError } = await supabase.rpc('process_document_action', {
+                p_doc_id: doc.id,
+                p_log_action: 'Returned',
+                p_log_location: originOffice, 
+                p_log_created_by: user?.id,
+                p_log_assigned_to: creatorName,
+                // --- THIS IS THE UPDATED STRING FORMAT ---
+                p_log_remarks: `Declined by: ${currentUserName}\nReason: ${reason}`,
+                p_new_status: 'routing', 
+                p_new_location: originOffice, 
+                p_new_clerk: creatorName, 
+                // --- THIS IS THE UPDATED STRING FORMAT ---
+                p_new_remarks: `Declined by: ${currentUserName}\nReason: ${reason}`
+            });
+            
+            if (rpcError) throw rpcError;
+
+            toast.success("Document Declined", { description: "It has been returned to the sender." });
+            onSuccess();
+            handleClose();
+        } catch (err: unknown) {
+            const errorMessage = err instanceof Error ? err.message : "An unknown error occurred.";
+            toast.error("Failed to decline", { description: errorMessage });
+        } finally {
+            setIsDeclining(false);
+        }
+    };
+
+    return (
+        <div className={`fixed inset-0 z-[1050] flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/70 backdrop-blur-sm transition-all ${isClosing ? 'animate-out fade-out duration-200 fill-mode-forwards' : 'animate-in fade-in duration-200'}`}>
+            <div className={`bg-white w-full max-w-lg max-h-[92vh] sm:max-h-[90vh] flex flex-col overflow-hidden shadow-2xl rounded-t-[1.5rem] sm:rounded-3xl ${isClosing ? 'animate-out slide-out-to-bottom-[100%] sm:slide-out-to-bottom-0 sm:zoom-out-95 duration-200 fill-mode-forwards' : 'animate-in slide-in-from-bottom-[100%] sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-300'}`}>
+                
+                <div className="text-rose-600 bg-rose-50 border-b border-rose-100 relative flex flex-col shrink-0">
+                    <div className="w-16 h-1.5 bg-rose-200 rounded-full mx-auto mt-3 sm:hidden shrink-0"></div>
+                    <div className="p-5 pt-3 sm:pt-6 flex items-center justify-between">
+                        <div className="w-10"></div> 
+                        <h3 className="font-black text-xl tracking-tight absolute left-1/2 -translate-x-1/2 whitespace-nowrap">Decline Document</h3>
+                        <button onClick={handleClose} disabled={isDeclining} className="p-2 -mr-2 bg-rose-100 hover:bg-rose-200 rounded-full transition-all active:scale-90 disabled:opacity-50">
+                            <X size={20} className="text-rose-700" />
+                        </button>
+                    </div>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto p-5 sm:p-8 space-y-6 custom-scrollbar bg-white">
+                    <div>
+                        <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Reason for Declining *</label>
+                        <textarea 
+                            value={reason}
+                            onChange={(e) => setReason(e.target.value)}
+                            placeholder="Why are you rejecting this document?" 
+                            className="w-full p-4 bg-slate-50 border-2 border-slate-200 focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 rounded-xl outline-none font-medium text-slate-900 text-sm transition-all min-h-[120px] resize-y"
+                            autoFocus
+                        />
+                    </div>
+                </div>
+                
+                <div className="bg-white p-4 sm:p-5 flex gap-3 shrink-0 border-t border-slate-50">
+                    <button onClick={handleClose} disabled={isDeclining} className="flex-1 py-3.5 bg-white border-2 border-slate-200 text-slate-600 font-bold rounded-xl active:scale-95 transition-all text-sm">Cancel</button>
+                    <button 
+                        onClick={handleConfirm} 
+                        disabled={isDeclining || !reason.trim()} 
+                        className="flex-[1.5] py-3.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl active:scale-95 transition-all text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:bg-rose-400 shadow-sm"
+                    >
+                        {isDeclining ? <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> : <><Ban size={18} strokeWidth={2.5} /> Confirm Decline</>}
+                    </button>
+                </div>
+            </div>
+        </div>
     );
 }

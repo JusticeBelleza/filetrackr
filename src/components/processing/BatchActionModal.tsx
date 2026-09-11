@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { MapPin, CheckCircle, Ban, UserPlus, ArrowLeft, X, PenTool, Camera, Search, ChevronDown } from 'lucide-react';
+import { MapPin, CheckCircle, Ban, UserPlus, ArrowLeft, X, PenTool, Camera, Search, ChevronDown, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '../../lib/supabase';
 import { convertImageToScannedPDF } from '../../lib/utils';
@@ -139,7 +139,7 @@ interface BatchModalProps {
     onClose: () => void; 
     onSuccess: () => void;
     onClearSelection?: () => void;
-    isClosingProp?: boolean; // Controlled strictly by Processing.tsx
+    isClosingProp?: boolean;
 }
 
 export default function BatchActionModal({ selectedDocs, currentUserName, departments, colleagues, onClose, onSuccess, onClearSelection, isClosingProp = false }: BatchModalProps) {
@@ -147,7 +147,8 @@ export default function BatchActionModal({ selectedDocs, currentUserName, depart
 
     const [isClosing, setIsClosing] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [activeAction, setActiveAction] = useState<'add_step' | 'complete' | 'reject' | 'reassign' | null>(null);
+    
+    const [activeAction, setActiveAction] = useState<'add_step' | 'complete' | 'reject' | 'reassign' | 'batch_receive' | 'batch_decline' | null>(null);
     
     const [hasSignature, setHasSignature] = useState(false);
     const [destination, setDestination] = useState('');
@@ -164,6 +165,7 @@ export default function BatchActionModal({ selectedDocs, currentUserName, depart
     const [isLoadingOrigins, setIsLoadingOrigins] = useState(false);
 
     const canProcessBatch = useMemo(() => selectedDocs.every((doc) => doc.assigned_clerk === currentUserName), [selectedDocs, currentUserName]);
+    const isPendingHandshakeBatch = useMemo(() => selectedDocs.length > 0 && selectedDocs.every((doc) => doc.status === 'pending_receipt'), [selectedDocs]);
 
     const handleClose = () => { setIsClosing(true); setTimeout(onClose, 200); };
 
@@ -174,12 +176,13 @@ export default function BatchActionModal({ selectedDocs, currentUserName, depart
     };
 
     useEffect(() => {
-        if (activeAction === 'reject' && selectedDocs.length > 0) {
+        // Fetch origin data for reject, batch_decline, AND reassign
+        if ((activeAction === 'reject' || activeAction === 'batch_decline' || activeAction === 'reassign') && selectedDocs.length > 0) {
             setIsLoadingOrigins(true);
             const fetchOrigins = async () => {
                 const newOriginData: Record<string, { office: string, creator: string }> = {};
                 await Promise.all(selectedDocs.map(async (doc) => {
-                    let originOffice = 'Originating Office'; let creatorName = 'Creator';
+                    let originOffice = 'Originating Office'; let creatorName = 'Creator / Sender';
                     if (doc.created_by) {
                         try {
                             const { data: creatorData } = await supabase.from('profiles').select('full_name').eq('id', doc.created_by).single();
@@ -239,8 +242,11 @@ export default function BatchActionModal({ selectedDocs, currentUserName, depart
     };
 
     const handleBatchSubmit = async () => {
-        if (activeAction === 'reject') {
+        if (activeAction === 'reject' || activeAction === 'batch_decline') {
             if (isLoadingOrigins) { toast.error("Please wait", { description: "Still locating the origin offices for your batch." }); return; }
+        }
+        if (activeAction === 'batch_decline') {
+            if (!remarks.trim()) { toast.error("Validation Error", { description: "Please provide a reason for declining." }); return; }
         }
         if (activeAction === 'add_step') {
             if (!destination) { toast.error("Validation Error", { description: "Please provide a destination office." }); return; }
@@ -254,6 +260,7 @@ export default function BatchActionModal({ selectedDocs, currentUserName, depart
         }
         if (activeAction === 'reassign') {
             if (!selectedColleague) { toast.error("Validation Error", { description: "Please select a colleague to re-assign to." }); return; }
+            if (isLoadingOrigins) { toast.error("Please wait", { description: "Verifying document creators." }); return; }
         }
 
         setIsSubmitting(true);
@@ -280,67 +287,105 @@ export default function BatchActionModal({ selectedDocs, currentUserName, depart
                 if (!uploadError) sharedAttachmentUrl = supabase.storage.from('attachments').getPublicUrl(fileName).data.publicUrl;
             }
 
+            let currentUserDept = 'Processing';
+            if (activeAction === 'batch_receive') {
+                const { data: empData } = await supabase.from('employees').select('department').eq('name', currentUserName).single();
+                if (empData?.department) currentUserDept = empData.department;
+            }
+
             const promises = selectedDocs.map(async (doc: DocumentItem) => {
-                if (activeAction === 'complete') {
-                    const fateString = retentionFate === 'originator' ? 'Returned to Originator' : 'Retained at Final Destination';
-                    const detailedRemarks = `Released By: ${releasedBy.trim()}\nDocument Retention: ${fateString}${remarks ? `\nRemarks: ${remarks.trim()}` : ''}`;
-                    
+                
+                // --- BATCH RECEIVE VIA RPC ---
+                if (activeAction === 'batch_receive') {
+                    const newLocation = currentUserDept || doc.current_location;
                     const { error: rpcError } = await supabase.rpc('process_document_action', {
                         p_doc_id: doc.id,
-                        p_log_action: 'Delivered',
-                        p_log_location: doc.final_destination || doc.current_location,
+                        p_log_action: 'Document Received',
+                        p_log_location: newLocation,
                         p_log_created_by: user.id,
                         p_log_assigned_to: currentUserName,
-                        p_log_remarks: detailedRemarks,
-                        p_log_signature_url: sharedSignatureUrl,
-                        p_log_attachment_url: sharedAttachmentUrl,
-                        p_new_status: 'sealed',
-                        p_completed_attachment_url: sharedAttachmentUrl
+                        p_log_remarks: 'Digital handshake completed. Custody accepted.',
+                        p_new_status: 'routing',
+                        p_new_location: newLocation
                     });
                     if (rpcError) throw rpcError;
 
-                } else if (activeAction === 'reject') {
-                    const originInfo = originData[doc.id] || { office: 'Originating Office', creator: 'Creator' };
-                    const finalRemarks = remarks.trim() || 'Returned without remarks';
-                    
+                // --- BATCH DECLINE VIA RPC ---
+                } else if (activeAction === 'batch_decline') {
+                    const originInfo = originData[doc.id] || { office: 'Originating Office', creator: 'Creator / Sender' };
                     const { error: rpcError } = await supabase.rpc('process_document_action', {
                         p_doc_id: doc.id,
                         p_log_action: 'Returned',
                         p_log_location: originInfo.office,
                         p_log_created_by: user.id,
                         p_log_assigned_to: originInfo.creator,
-                        p_log_remarks: finalRemarks,
-                        p_new_status: 'pending',
-                        p_new_location: originInfo.office,
-                        p_new_clerk: originInfo.creator,
-                        p_new_remarks: finalRemarks
+                        p_log_remarks: `Declined by: ${currentUserName}\nReason: ${remarks}`,
+                        p_new_status: 'routing',
+                        p_new_location: originInfo.office, 
+                        p_new_clerk: originInfo.creator, 
+                        p_new_remarks: `Declined by: ${currentUserName}\nReason: ${remarks}`
+                    });
+                    if (rpcError) throw rpcError;
+
+                // --- EXISTING ACTIONS ---
+                } else if (activeAction === 'complete') {
+                    const fateString = retentionFate === 'originator' ? 'Returned to Originator' : 'Retained at Final Destination';
+                    const detailedRemarks = `Released By: ${releasedBy.trim()}\nDocument Retention: ${fateString}${remarks ? `\nRemarks: ${remarks.trim()}` : ''}`;
+                    
+                    const { error: rpcError } = await supabase.rpc('process_document_action', {
+                        p_doc_id: doc.id, p_log_action: 'Delivered', p_log_location: doc.final_destination || doc.current_location,
+                        p_log_created_by: user.id, p_log_assigned_to: currentUserName, p_log_remarks: detailedRemarks,
+                        p_log_signature_url: sharedSignatureUrl, p_log_attachment_url: sharedAttachmentUrl, p_new_status: 'sealed',
+                        p_completed_attachment_url: sharedAttachmentUrl
+                    });
+                    if (rpcError) throw rpcError;
+
+                } else if (activeAction === 'reject') {
+                    const originInfo = originData[doc.id] || { office: 'Originating Office', creator: 'Creator / Sender' };
+                    const finalRemarks = remarks.trim() || 'Returned without remarks';
+                    
+                    const { error: rpcError } = await supabase.rpc('process_document_action', {
+                        p_doc_id: doc.id, p_log_action: 'Returned', p_log_location: originInfo.office,
+                        p_log_created_by: user.id, p_log_assigned_to: originInfo.creator, p_log_remarks: finalRemarks,
+                        p_new_status: 'pending', p_new_location: originInfo.office, p_new_clerk: originInfo.creator, p_new_remarks: finalRemarks
                     });
                     if (rpcError) throw rpcError;
 
                 } else if (activeAction === 'add_step') {
                     const { error: rpcError } = await supabase.rpc('process_document_action', {
-                        p_doc_id: doc.id,
-                        p_log_action: 'In transit',
-                        p_log_location: destination,
-                        p_log_created_by: user.id,
-                        p_log_assigned_to: receivingClerk.trim(),
-                        p_log_signature_url: sharedSignatureUrl,
-                        p_new_status: 'routing',
-                        p_new_location: destination,
-                        p_clear_remarks: true
+                        p_doc_id: doc.id, p_log_action: 'In transit', p_log_location: destination,
+                        p_log_created_by: user.id, p_log_assigned_to: receivingClerk.trim(), p_log_signature_url: sharedSignatureUrl,
+                        p_new_status: 'routing', p_new_location: destination, p_clear_remarks: true
                     });
                     if (rpcError) throw rpcError;
 
+                // --- UPDATED REASSIGN WITH CREATOR BYPASS LOGIC ---
                 } else if (activeAction === 'reassign') {
                     const prevClerk = doc.assigned_clerk || 'Unassigned';
                     
+                    // Check if we are reassigning back to the creator
+                    const originInfo = originData[doc.id];
+                    const isReturningToCreator = originInfo && selectedColleague === originInfo.creator;
+                    
+                    // If returning to creator, skip handshake and go straight to routing
+                    const nextStatus = isReturningToCreator ? 'routing' : 'pending_receipt';
+                    
+                    // Force the status update safely 
+                    const { error: updateError } = await supabase
+                        .from('documents')
+                        .update({ 
+                            status: nextStatus,
+                            assigned_clerk: selectedColleague 
+                        })
+                        .eq('id', doc.id);
+                        
+                    if (updateError) throw updateError;
+                    
                     const { error: rpcError } = await supabase.rpc('process_document_action', {
-                        p_doc_id: doc.id,
-                        p_log_action: 'REASSIGNED',
-                        p_log_location: doc.current_location || 'Processing',
-                        p_log_created_by: user.id,
-                        p_log_remarks: `Batch re-assigned from ${prevClerk} to ${selectedColleague} by ${currentUserName}`,
-                        p_new_clerk: selectedColleague
+                        p_doc_id: doc.id, p_log_action: 'REASSIGNED', p_log_location: doc.current_location || 'Processing',
+                        p_log_created_by: user.id, p_log_remarks: `Batch re-assigned from ${prevClerk} to ${selectedColleague} by ${currentUserName}`,
+                        p_new_clerk: selectedColleague,
+                        p_new_status: nextStatus // <-- Adds pending_receipt to the RPC
                     });
                     if (rpcError) throw rpcError;
                 }
@@ -368,74 +413,84 @@ export default function BatchActionModal({ selectedDocs, currentUserName, depart
         }
     };
 
-    // ========================================================================
-    // INITIAL STATE: UNIFIED FLOATING MENU CARD
-    // ========================================================================
     if (!activeAction) {
         return (
             <>
-                {/* Backdrop relies purely on parent state to fade in/out seamlessly */}
                 <div 
                     className={`fixed inset-0 z-[998] bg-slate-900/30 backdrop-blur-sm transition-all ${isClosingProp ? 'animate-out fade-out duration-200' : 'animate-in fade-in duration-200'}`} 
                     onClick={onClose}
                 ></div>
                 
-                {/* PERFECTLY STATIONARY MENU CARD 
-                    No sliding. It zooms and fades precisely above the parent FAB.
-                */}
                 <div className={`fixed bottom-[5.5rem] right-6 sm:bottom-[6.5rem] sm:right-8 z-[999] flex flex-col items-end origin-bottom-right ${isClosingProp ? 'animate-out zoom-out-95 fade-out duration-200' : 'animate-in zoom-in-95 fade-in duration-200'}`}>
                     <div className="bg-white p-2.5 rounded-3xl shadow-[0_10px_40px_rgba(0,0,0,0.15)] flex flex-col min-w-[240px] border border-slate-100 gap-1">
                         
-                        {/* Header Area */}
                         <div className="px-3 py-2 border-b border-slate-100 mb-0.5 flex items-center justify-between">
                             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Batch Options</span>
                             <span className="bg-[#eaf4f1] text-[#0f766e] text-[10px] font-black px-2 py-0.5 rounded-md">{selectedDocs.length} Docs</span>
                         </div>
 
-                        {!canProcessBatch && (
+                        {!canProcessBatch && !isPendingHandshakeBatch && (
                             <div className="px-3 py-2">
                                 <p className="text-xs text-amber-600 font-bold leading-snug">Processing restricted. Only Re-assign allowed.</p>
                             </div>
                         )}
-
-                        {/* Menu Options */}
-                        {canProcessBatch && (
-                            <button onClick={() => setActiveAction('add_step')} className="flex items-center gap-3.5 w-full p-2 rounded-2xl transition-all hover:bg-slate-50 active:scale-[0.98] group">
-                                <div className="w-[2.4rem] h-[2.4rem] rounded-[0.8rem] bg-[#eaf4f1] text-[#0f766e] flex items-center justify-center transition-colors group-hover:bg-[#d5ebe5] shrink-0">
-                                    <MapPin size={18} strokeWidth={2.5} />
-                                </div>
-                                <span className="font-bold text-[15px] text-slate-800">Add Step</span>
-                            </button>
-                        )}
                         
-                        {canProcessBatch && (
-                            <button onClick={() => setActiveAction('complete')} className="flex items-center gap-3.5 w-full p-2 rounded-2xl transition-all hover:bg-slate-50 active:scale-[0.98] group">
-                                <div className="w-[2.4rem] h-[2.4rem] rounded-[0.8rem] bg-[#eaf4f1] text-[#0f766e] flex items-center justify-center transition-colors group-hover:bg-[#d5ebe5] shrink-0">
-                                    <CheckCircle size={18} strokeWidth={2.5} />
-                                </div>
-                                <span className="font-bold text-[15px] text-slate-800">Complete Batch</span>
-                            </button>
-                        )}
-                        
-                        <button onClick={() => setActiveAction('reassign')} className="flex items-center gap-3.5 w-full p-2 rounded-2xl transition-all hover:bg-slate-50 active:scale-[0.98] group">
-                            <div className="w-[2.4rem] h-[2.4rem] rounded-[0.8rem] bg-[#eaf4f1] text-[#0f766e] flex items-center justify-center transition-colors group-hover:bg-[#d5ebe5] shrink-0">
-                                <UserPlus size={18} strokeWidth={2.5} />
-                            </div>
-                            <span className="font-bold text-[15px] text-slate-800">Re-assign</span>
-                        </button>
-                        
-                        {canProcessBatch && (
-                            <button onClick={() => setActiveAction('reject')} className="flex items-center gap-3.5 w-full p-2 rounded-2xl transition-all hover:bg-slate-50 active:scale-[0.98] group">
-                                <div className="w-[2.4rem] h-[2.4rem] rounded-[0.8rem] bg-rose-50 text-rose-600 flex items-center justify-center transition-colors group-hover:bg-rose-100 shrink-0">
-                                    <Ban size={18} strokeWidth={2.5} />
-                                </div>
-                                <span className="font-bold text-[15px] text-slate-800">Return / Reject</span>
-                            </button>
+                        {isPendingHandshakeBatch ? (
+                            <>
+                                <button onClick={() => setActiveAction('batch_receive')} className="flex items-center gap-3.5 w-full p-2 rounded-2xl transition-all hover:bg-emerald-50 active:scale-[0.98] group">
+                                    <div className="w-[2.4rem] h-[2.4rem] rounded-[0.8rem] bg-emerald-100 text-emerald-600 flex items-center justify-center transition-colors group-hover:bg-emerald-200 shrink-0">
+                                        <Check size={18} strokeWidth={3} />
+                                    </div>
+                                    <span className="font-bold text-[15px] text-slate-800">Receive Batch</span>
+                                </button>
+                                
+                                <button onClick={() => setActiveAction('batch_decline')} className="flex items-center gap-3.5 w-full p-2 rounded-2xl transition-all hover:bg-rose-50 active:scale-[0.98] group">
+                                    <div className="w-[2.4rem] h-[2.4rem] rounded-[0.8rem] bg-rose-100 text-rose-600 flex items-center justify-center transition-colors group-hover:bg-rose-200 shrink-0">
+                                        <Ban size={18} strokeWidth={2.5} />
+                                    </div>
+                                    <span className="font-bold text-[15px] text-slate-800">Decline Batch</span>
+                                </button>
+                            </>
+                        ) : (
+                            <>
+                                {canProcessBatch && (
+                                    <button onClick={() => setActiveAction('add_step')} className="flex items-center gap-3.5 w-full p-2 rounded-2xl transition-all hover:bg-slate-50 active:scale-[0.98] group">
+                                        <div className="w-[2.4rem] h-[2.4rem] rounded-[0.8rem] bg-[#eaf4f1] text-[#0f766e] flex items-center justify-center transition-colors group-hover:bg-[#d5ebe5] shrink-0">
+                                            <MapPin size={18} strokeWidth={2.5} />
+                                        </div>
+                                        <span className="font-bold text-[15px] text-slate-800">Add Step</span>
+                                    </button>
+                                )}
+                                
+                                {canProcessBatch && (
+                                    <button onClick={() => setActiveAction('complete')} className="flex items-center gap-3.5 w-full p-2 rounded-2xl transition-all hover:bg-slate-50 active:scale-[0.98] group">
+                                        <div className="w-[2.4rem] h-[2.4rem] rounded-[0.8rem] bg-[#eaf4f1] text-[#0f766e] flex items-center justify-center transition-colors group-hover:bg-[#d5ebe5] shrink-0">
+                                            <CheckCircle size={18} strokeWidth={2.5} />
+                                        </div>
+                                        <span className="font-bold text-[15px] text-slate-800">Complete Batch</span>
+                                    </button>
+                                )}
+                                
+                                <button onClick={() => setActiveAction('reassign')} className="flex items-center gap-3.5 w-full p-2 rounded-2xl transition-all hover:bg-slate-50 active:scale-[0.98] group">
+                                    <div className="w-[2.4rem] h-[2.4rem] rounded-[0.8rem] bg-[#eaf4f1] text-[#0f766e] flex items-center justify-center transition-colors group-hover:bg-[#d5ebe5] shrink-0">
+                                        <UserPlus size={18} strokeWidth={2.5} />
+                                    </div>
+                                    <span className="font-bold text-[15px] text-slate-800">Re-assign</span>
+                                </button>
+                                
+                                {canProcessBatch && (
+                                    <button onClick={() => setActiveAction('reject')} className="flex items-center gap-3.5 w-full p-2 rounded-2xl transition-all hover:bg-slate-50 active:scale-[0.98] group">
+                                        <div className="w-[2.4rem] h-[2.4rem] rounded-[0.8rem] bg-rose-50 text-rose-600 flex items-center justify-center transition-colors group-hover:bg-rose-100 shrink-0">
+                                            <Ban size={18} strokeWidth={2.5} />
+                                        </div>
+                                        <span className="font-bold text-[15px] text-slate-800">Return / Reject</span>
+                                    </button>
+                                )}
+                            </>
                         )}
 
                         <div className="h-[1px] bg-slate-100 my-1 mx-2"></div>
 
-                        {/* Clear Selection Button */}
                         <button onClick={onClearSelection} className="flex items-center gap-3.5 w-full p-2 rounded-2xl transition-all hover:bg-slate-50 active:scale-[0.98] group">
                             <div className="w-[2.4rem] h-[2.4rem] rounded-[0.8rem] bg-slate-100 text-slate-500 flex items-center justify-center transition-colors group-hover:bg-slate-200 shrink-0">
                                 <X size={18} strokeWidth={2.5} />
@@ -444,33 +499,77 @@ export default function BatchActionModal({ selectedDocs, currentUserName, depart
                         </button>
                     </div>
                 </div>
-                {/* No duplicate button is rendered here. Processing.tsx controls it entirely. */}
             </>
         );
     }
 
-    // ========================================================================
-    // SELECTED ACTION STATE: FULL FORM MODAL
-    // ========================================================================
-    const headerColorClass = activeAction === 'add_step' ? 'bg-slate-900' : activeAction === 'reject' ? 'bg-red-700' : activeAction === 'complete' ? 'bg-emerald-700' : activeAction === 'reassign' ? 'bg-[#0f766e]' : 'bg-slate-900';
+    const headerColorClass = activeAction === 'add_step' ? 'bg-slate-900' : (activeAction === 'reject' || activeAction === 'batch_decline') ? 'bg-rose-600' : (activeAction === 'complete' || activeAction === 'batch_receive') ? 'bg-emerald-600' : activeAction === 'reassign' ? 'bg-[#0f766e]' : 'bg-slate-900';
 
     return (
         <div className={`fixed inset-0 z-[1050] flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/70 backdrop-blur-sm ${isClosing ? 'animate-out fade-out duration-200 fill-mode-forwards' : 'animate-in fade-in duration-200'}`}>
             <div className={`bg-white w-full max-w-xl max-h-[92vh] sm:max-h-[90vh] flex flex-col overflow-hidden shadow-2xl rounded-t-[1.5rem] sm:rounded-3xl ${isClosing ? 'animate-out slide-out-to-bottom-[100%] sm:slide-out-to-bottom-0 sm:zoom-out-95 duration-200 fill-mode-forwards' : 'animate-in slide-in-from-bottom-[100%] sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-300'}`}>
                 
-                {/* Dynamic Colored Header */}
                 <div className={`text-white relative flex flex-col shrink-0 transition-colors duration-300 ${headerColorClass}`}>
                     <div className="w-16 h-1.5 bg-white/30 rounded-full mx-auto mt-3 sm:hidden shrink-0"></div>
                     <div className="p-5 pt-3 sm:pt-6 flex items-center justify-between">
                         <button onClick={handleBackBtn} disabled={isSubmitting} className="p-2 -ml-2 bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-full transition-all active:scale-90 disabled:opacity-50"><ArrowLeft size={24} /></button>
-                        <h3 className="font-black text-xl tracking-tight absolute left-1/2 -translate-x-1/2 whitespace-nowrap">{activeAction === 'reject' ? 'Reject & Return' : activeAction === 'complete' ? 'Finalize Batch' : activeAction === 'reassign' ? 'Batch Re-assign' : 'Route Document'}</h3>
+                        <h3 className="font-black text-xl tracking-tight absolute left-1/2 -translate-x-1/2 whitespace-nowrap">
+                            {activeAction === 'reject' ? 'Reject & Return' : activeAction === 'complete' ? 'Finalize Batch' : activeAction === 'reassign' ? 'Batch Re-assign' : activeAction === 'batch_receive' ? 'Receive Documents' : activeAction === 'batch_decline' ? 'Decline Documents' : 'Route Document'}
+                        </h3>
                         <button onClick={handleClose} disabled={isSubmitting} className="p-2 -mr-2 bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-full transition-all active:scale-90 disabled:opacity-50"><X size={24} /></button>
                     </div>
                 </div>
                 
-                {/* Form Content */}
                 <div className="flex-1 overflow-y-auto p-5 sm:p-8 space-y-6 custom-scrollbar bg-white">
                     <div className="space-y-6">
+                        
+                        {activeAction === 'batch_receive' && (
+                            <div className="text-center space-y-4 pt-4">
+                                <div className="mx-auto w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mb-2">
+                                    <CheckCircle size={32} className="text-emerald-600" />
+                                </div>
+                                <h4 className="text-lg font-bold text-slate-900 leading-tight">Confirm Batch Receipt</h4>
+                                <p className="text-sm text-slate-600 font-medium pb-4 border-b border-slate-100">
+                                    You are about to accept custody of <strong className="text-slate-800">{selectedDocs.length} documents</strong>. This will be officially logged in all of their digital trails.
+                                </p>
+                            </div>
+                        )}
+
+                        {activeAction === 'batch_decline' && (
+                            <>
+                                <div className="bg-rose-50 border border-rose-200 p-4 rounded-xl text-rose-700 text-sm font-bold flex flex-col gap-3 shadow-sm">
+                                    <div className="flex items-start gap-3">
+                                        <Ban size={20} className="shrink-0 mt-0.5" />
+                                        <div className="flex-1">
+                                            <p className="mb-3 text-rose-800">You are about to decline custody of <strong className="text-rose-900">{selectedDocs.length} documents</strong>. They will be automatically returned to:</p>
+                                            {isLoadingOrigins ? (
+                                                <div className="flex items-center gap-2 text-rose-600"><span className="w-3 h-3 border-2 border-rose-300 border-t-rose-600 rounded-full animate-spin"></span><span className="text-xs uppercase tracking-wider font-bold">Locating offices...</span></div>
+                                            ) : (
+                                                <div className="max-h-32 overflow-y-auto custom-scrollbar pr-2 space-y-2">
+                                                    {selectedDocs.map(doc => { 
+                                                        const info = originData[doc.id]; 
+                                                        return (
+                                                            <div key={doc.id} className="bg-white/60 p-2 rounded-lg border border-rose-100/50 text-xs flex items-center justify-between shadow-sm">
+                                                                <span className="font-mono text-[10px] text-rose-700 bg-rose-100 px-1.5 py-0.5 rounded mr-2 shrink-0">{doc.reference_no || doc.id.substring(0,8)}</span>
+                                                                <div className="text-right min-w-0 flex-1 truncate">
+                                                                    <span className="text-rose-900 font-bold block truncate">{info?.office || 'Originating Office'}</span>
+                                                                    <span className="text-rose-600/80 font-bold text-[10px] uppercase tracking-wider block truncate">For: {info?.creator || 'Creator'}</span>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="relative z-10">
+                                    <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Reason for Declining *</label>
+                                    <textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Why are you rejecting this batch?" className="w-full p-4 bg-slate-50/50 border border-slate-200 focus:bg-white focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10 rounded-xl outline-none font-bold text-slate-700 text-sm min-h-[140px] resize-y transition-all" autoFocus></textarea>
+                                </div>
+                            </>
+                        )}
+
                         {activeAction === 'add_step' && (
                             <>
                                 <div className="relative z-20"><label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Next Destination Office *</label><CustomSelect options={departments} value={destination} onChange={setDestination} placeholder="Select receiving office..." isRelative={true} itemType="office" /></div>
@@ -528,6 +627,8 @@ export default function BatchActionModal({ selectedDocs, currentUserName, depart
                 </div>
 
                 <div className="bg-white p-4 sm:p-5 flex shrink-0 border-t border-slate-50">
+                    {activeAction === 'batch_receive' && <button onClick={handleBatchSubmit} disabled={isSubmitting} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-xl shadow-sm transition-all active:scale-[0.98] text-sm flex justify-center items-center gap-2 disabled:opacity-50">{isSubmitting ? <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> : <><CheckCircle size={18} strokeWidth={2.5} /> Yes, Receive Documents</>}</button>}
+                    {activeAction === 'batch_decline' && <button onClick={handleBatchSubmit} disabled={isSubmitting || !remarks.trim() || isLoadingOrigins} className="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-3.5 rounded-xl shadow-sm transition-all active:scale-[0.98] text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:bg-rose-400">{isSubmitting ? <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> : <><Ban size={18} strokeWidth={2.5} /> Confirm Decline</>}</button>}
                     {activeAction === 'add_step' && <button onClick={handleBatchSubmit} disabled={isSubmitting || !destination || !receivingClerk.trim() || !hasSignature} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl shadow-sm transition-all active:scale-[0.98] text-sm flex justify-center items-center gap-2 disabled:opacity-50">{isSubmitting ? <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> : <><MapPin size={18} strokeWidth={2.5} /> Confirm Add Step</>}</button>}
                     {activeAction === 'complete' && <button onClick={handleBatchSubmit} disabled={isSubmitting || !releasedBy.trim() || !retentionFate || !hasSignature || isProcessingFile} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-xl shadow-sm transition-all active:scale-[0.98] text-sm flex items-center justify-center gap-2 disabled:opacity-50">{isSubmitting ? <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> : <><CheckCircle size={18} strokeWidth={2.5} /> Finalize Batch</>}</button>}
                     {activeAction === 'reject' && <button onClick={handleBatchSubmit} disabled={isSubmitting || isLoadingOrigins} className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3.5 rounded-xl shadow-sm transition-all active:scale-[0.98] text-sm flex items-center justify-center gap-2 disabled:opacity-50">{isSubmitting ? <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> : <><Ban size={18} strokeWidth={2.5} /> Confirm Return</>}</button>}

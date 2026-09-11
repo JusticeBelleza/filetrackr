@@ -21,11 +21,13 @@ interface DocumentCardProps {
     onCancel?: (doc: DocumentItem) => void;
     onRevise?: (doc: DocumentItem) => void;
     onAction?: (doc: DocumentItem) => void;
+    onReceive?: (doc: DocumentItem) => void; // <-- NEW
+    onDecline?: (doc: DocumentItem) => void; // <-- NEW
 }
 
 export default function DocumentCard({
     doc, activeTab, isSelected, isExpanded, showCheckbox, currentUserName, currentUserId,
-    onToggleSelection, onToggleCollapse, onPreview, onTrack, onReassign, onCancel, onRevise, onAction
+    onToggleSelection, onToggleCollapse, onPreview, onTrack, onReassign, onCancel, onRevise, onAction, onReceive, onDecline
 }: DocumentCardProps) {
     
     // Keep local state in sync if the parent list forces an update
@@ -219,23 +221,45 @@ export default function DocumentCard({
                         </div>
                         
                         <div className="flex flex-col gap-2 pt-1">
-                            <div className="flex gap-2">
-                                {localDoc.attachment_url && (
-                                    <button onClick={() => onPreview(localDoc.attachment_url as string)} className="shrink-0 py-2 px-3 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-xl flex items-center justify-center transition-all active:scale-95 border-2 border-slate-300 shadow-sm" title="View Attached File">
-                                        <Eye size={16} />
-                                    </button>
-                                )}
-                                <button onClick={() => onTrack(localDoc)} className="flex-1 py-2 px-2 bg-white hover:bg-slate-50 text-slate-800 font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all active:scale-95 text-xs sm:text-sm border-2 border-slate-300 shadow-sm">
-                                    <Clock size={14} /> Track
-                                </button>
-                                {canReassign && (
-                                    <button onClick={() => onReassign(localDoc)} className="flex-1 py-2 px-2 bg-white hover:bg-slate-50 text-slate-800 font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all active:scale-95 text-xs sm:text-sm border-2 border-slate-300 shadow-sm">
-                                        <UserPlus size={14} /> Re-assign
-                                    </button>
-                                )}
-                            </div>
+                            {/* Hide Track & Reassign during Handshake, but keep Preview if attached */}
+                            {(localDoc.attachment_url || localDoc.status !== 'pending_receipt') && (
+                                <div className="flex gap-2">
+                                    {localDoc.attachment_url && (
+                                        <button onClick={() => onPreview(localDoc.attachment_url as string)} className="shrink-0 py-2 px-3 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-xl flex items-center justify-center transition-all active:scale-95 border-2 border-slate-300 shadow-sm" title="View Attached File">
+                                            <Eye size={16} />
+                                        </button>
+                                    )}
+                                    
+                                    {localDoc.status !== 'pending_receipt' && (
+                                        <>
+                                            <button onClick={() => onTrack(localDoc)} className="flex-1 py-2 px-2 bg-white hover:bg-slate-50 text-slate-800 font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all active:scale-95 text-xs sm:text-sm border-2 border-slate-300 shadow-sm">
+                                                <Clock size={14} /> Track
+                                            </button>
+                                            {canReassign && (
+                                                <button onClick={() => onReassign(localDoc)} className="flex-1 py-2 px-2 bg-white hover:bg-slate-50 text-slate-800 font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all active:scale-95 text-xs sm:text-sm border-2 border-slate-300 shadow-sm">
+                                                    <UserPlus size={14} /> Re-assign
+                                                </button>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            )}
                             
-                            {isManager ? (
+                            {/* --- THE NEW DIGITAL HANDSHAKE LOGIC --- */}
+                            {isManager && localDoc.status === 'pending_receipt' ? (
+                                <div className="flex gap-2 w-full mt-1">
+                                    {onReceive && (
+                                        <button onClick={() => onReceive(localDoc)} className="flex-[2] py-2.5 px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all active:scale-95 text-xs sm:text-sm border-2 border-emerald-700 shadow-sm">
+                                            <Check size={16} strokeWidth={2.5} /> Receive
+                                        </button>
+                                    )}
+                                    {onDecline && (
+                                        <button onClick={(e) => { e.stopPropagation(); onDecline(localDoc); }} className="flex-[1] py-2.5 px-2 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all active:scale-95 text-xs sm:text-sm border border-rose-200 shadow-sm">
+                                            <Ban size={16} strokeWidth={2.5} /> Decline
+                                        </button>
+                                    )}
+                                </div>
+                            ) : isManager ? (
                                 <div className="flex gap-2 w-full mt-1">
                                     {onAction && (
                                         <button onClick={() => onAction(localDoc)} className="flex-1 py-2.5 px-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all active:scale-95 text-xs sm:text-sm border-2 border-blue-700 shadow-sm">
@@ -251,7 +275,11 @@ export default function DocumentCard({
                                 </div>
                             ) : (
                                 <div className="w-full py-2 px-3 bg-slate-100 border border-slate-200 rounded-xl text-center mt-1">
-                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Pending action by {localDoc.assigned_clerk}</p>
+                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                                        {localDoc.status === 'pending_receipt' 
+                                            ? `Pending receipt by ${localDoc.assigned_clerk}` 
+                                            : `Pending action by ${localDoc.assigned_clerk}`}
+                                    </p>
                                 </div>
                             )}
                         </div>
