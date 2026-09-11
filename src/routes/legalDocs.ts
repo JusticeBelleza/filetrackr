@@ -122,7 +122,7 @@ These Terms and Conditions govern the access to and use of FileTrackr, an offici
 
 **15. Changes to the Terms** The Abra Provincial Health Office reserves the right to amend these Terms. Material changes to system rules will be communicated via administrative memorandum or an in-app notification upon your next login.
 
-**Current Version:** 1.1.8 (August 2026)
+**Current Version:** 1.2.0 (September 2026)
 `,
 
   aup: `

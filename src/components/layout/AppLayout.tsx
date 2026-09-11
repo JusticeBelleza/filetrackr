@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
-    FileText, Activity, History, Settings, LogOut, Shield, AlertCircle, X, Calendar, FilePlus 
+    FileText, Activity, History, Settings, Shield, Calendar, FilePlus 
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useUiStore } from '../../store/uiStore';
@@ -54,8 +54,6 @@ export default function AppLayout() {
 
   const [currentUserRole, setCurrentUserRole] = useState<'admin' | 'pho_staff' | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
-  const [isClosingLogout, setIsClosingLogout] = useState(false);
   const [dateInfo, setDateInfo] = useState({ long: '', short: '', time: '' });
 
   // Clock
@@ -212,16 +210,6 @@ export default function AppLayout() {
     }
   }, [activeTab, currentUserRole, navigate]);
 
-  const openLogoutModal = () => setIsLogoutModalOpen(true);
-  const closeLogoutModal = () => {
-      setIsClosingLogout(true);
-      setTimeout(() => { setIsLogoutModalOpen(false); setIsClosingLogout(false); }, 300);
-  };
-  const confirmLogout = async () => {
-      await supabase.auth.signOut();
-      window.location.href = '/login'; 
-  };
-
   const getActiveTranslateStaff = () => {
       switch(activeTab) {
           case 'dashboard': return 'left-[10%] opacity-100 scale-100';
@@ -304,13 +292,6 @@ export default function AppLayout() {
           )}
           <DesktopNavItem icon={<Settings />} label="Settings" to="/settings" isActive={activeTab === 'settings'} />
         </div>
-
-        <div className="p-4 border-t border-slate-800">
-          <button onClick={openLogoutModal} className="flex items-center gap-3 px-4 py-3 w-full text-left text-red-400 hover:text-white hover:bg-red-600 rounded-lg transition-colors group">
-            <LogOut size={20} className="group-hover:scale-110 transition-transform" />
-            <span className="font-bold">Logout</span>
-          </button>
-        </div>
       </nav>
 
       {/* Main Content Area */}
@@ -332,21 +313,16 @@ export default function AppLayout() {
           </div>
 
           <div className="relative z-10 flex flex-col items-end text-right">
-             <div className="flex items-center gap-3">
-                 <div className="flex flex-col items-end">
-                     <span className="text-[9px] font-black text-[#4D6787] uppercase tracking-widest flex items-center gap-1 mb-0.5">
-                        <Calendar size={10} strokeWidth={3} /> PHT
-                     </span>
-                     <span className="text-[11px] font-bold text-slate-200">
-                        {dateInfo.short}
-                     </span>
-                     <span className="text-[10px] font-bold text-slate-400 mt-0.5">
-                        {dateInfo.time}
-                     </span>
-                 </div>
-                 <button onClick={openLogoutModal} className="p-2.5 bg-red-500 hover:bg-red-600 rounded-full transition-all active:scale-90 shadow-md" title="Logout">
-                     <LogOut size={16} className="text-white" strokeWidth={2.5} />
-                 </button>
+             <div className="flex flex-col items-end">
+                 <span className="text-[9px] font-black text-[#4D6787] uppercase tracking-widest flex items-center gap-1 mb-0.5">
+                    <Calendar size={10} strokeWidth={3} /> PHT
+                 </span>
+                 <span className="text-[11px] font-bold text-slate-200">
+                    {dateInfo.short}
+                 </span>
+                 <span className="text-[10px] font-bold text-slate-400 mt-0.5">
+                    {dateInfo.time}
+                 </span>
              </div>
           </div>
         </header>
@@ -409,26 +385,6 @@ export default function AppLayout() {
              </nav>
           )}
       </div>
-
-      {isLogoutModalOpen && (
-        <div className={`fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/50 backdrop-blur-sm ${isClosingLogout ? 'animate-overlay-fade-out' : 'animate-overlay-fade'}`}>
-          <div className={`bg-white w-full max-w-md rounded-t-[1.5rem] sm:rounded-2xl shadow-2xl overflow-hidden ${isClosingLogout ? 'animate-responsive-modal-close' : 'animate-responsive-modal'}`}>
-            <div className="bg-red-700 text-white p-5 flex items-center justify-between">
-              <h3 className="font-black text-xl flex items-center gap-2"><AlertCircle size={22} /> Confirm Logout</h3>
-              <button onClick={closeLogoutModal} className="p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors"><X size={20} /></button>
-            </div>
-            <div className="p-6 space-y-4">
-              <p className="text-base text-slate-700 font-medium">
-                Are you sure you want to securely log out of your account?
-              </p>
-              <div className="pt-4 flex gap-3">
-                <button type="button" onClick={closeLogoutModal} className="flex-1 py-3.5 bg-white border-2 border-slate-300 hover:bg-slate-50 text-slate-700 font-bold rounded-xl active:scale-95 transition-transform text-base">Cancel</button>
-                <button type="button" onClick={confirmLogout} className="flex-1 py-3.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl border-2 border-red-700 active:scale-95 transition-transform text-base shadow-md">Yes, Logout</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {isCreateModalOpen && <CreateDocumentModal />}
       <InstallPrompt />
