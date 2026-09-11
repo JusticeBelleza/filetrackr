@@ -162,11 +162,27 @@ export default function Login() {
           // Send to interceptor instead of navigating directly
           await checkLegalAndNavigate(data.user.id);
       }
-    } catch (err: unknown) {
+    } catch (err: any) {
       console.error("Biometric Login Error:", err);
-      setShowBiometricNotice(true);
+      
+      // Always reset the Cloudflare token so the next attempt works
       setTurnstileToken(null);
       turnstileRef.current?.reset();
+
+      const errorMsg = err?.message || err?.toString() || "";
+      
+      // 1. Check if the error is just a stale Cloudflare security token
+      if (errorMsg.toLowerCase().includes("captcha") || errorMsg.toLowerCase().includes("token")) {
+          toast.error("Security Token Refreshed", { description: "Please tap the fingerprint icon one more time." });
+      } 
+      // 2. Check if the passkey is ACTUALLY missing, or if the user hit 'cancel'
+      else if (errorMsg.includes("NotAllowedError") || errorMsg.includes("cancelled") || errorMsg.includes("No credentials")) {
+          setShowBiometricNotice(true);
+      } 
+      // 3. Catch any other random network errors
+      else {
+          toast.error("Biometric Error", { description: errorMsg });
+      }
     } finally {
       setIsBiometricLoading(false);
     }
