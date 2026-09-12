@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-    Shield, Lock, Eye, EyeOff, Save, Check, AlertCircle, Mail, Briefcase, Phone, Building2, Edit3, Hash, User, Fingerprint, Sparkles, Star, ChevronRight, ChevronDown, FileText, Settings as SettingsIcon, LogOut
+    Shield, Lock, Eye, EyeOff, Save, Check, AlertCircle, Mail, Briefcase, Phone, Building2, Edit3, Hash, User, Fingerprint, Sparkles, Star, ChevronRight, ChevronDown, FileText, Settings as SettingsIcon, LogOut, Activity
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '../lib/supabase';
@@ -8,6 +8,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
 import { legalContents } from './legalDocs'; 
 import { CHANGELOG } from '../lib/changelog'; 
+
+// Import our new modular modals
+import SystemDiagnosticsModal from '../components/settings/SystemDiagnosticsModal';
+import BiometricManagerModal from '../components/settings/BiometricManagerModal';
 
 // --- Shared Modal Animation Styles ---
 const modalAnimationStyles = `
@@ -50,6 +54,8 @@ export default function Settings() {
   
   // Modals State
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
+  const [isBiometricManagerOpen, setIsBiometricManagerOpen] = useState(false);
   
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [isClosingLogout, setIsClosingLogout] = useState(false);
@@ -283,6 +289,8 @@ export default function Settings() {
 
               <CollapsibleGroup title="System" icon={<SettingsIcon size={20} />} hasUpdate={hasUnseenUpdate}>
                   <SettingsMenuRow icon={<Sparkles size={18} />} label="Release Notes" onClick={handleOpenWhatsNew} hasUpdate={hasUnseenUpdate} />
+                  <SettingsMenuRow icon={<Fingerprint size={18} />} label="Manage Biometric Devices" onClick={() => setIsBiometricManagerOpen(true)} />
+                  <SettingsMenuRow icon={<Activity size={18} />} label="System Diagnostics" onClick={() => setIsDiagnosticsOpen(true)} />
               </CollapsibleGroup>
 
               <CollapsibleGroup title="Legal Documents" icon={<FileText size={20} />}>
@@ -461,8 +469,10 @@ export default function Settings() {
         </div>
       )}
 
-      {/* --- WHATS NEW MODAL --- */}
+      {/* --- MODULAR ADDITIONS --- */}
       {showWhatsNew && <WhatsNewModal onClose={() => setShowWhatsNew(false)} />}
+      {isDiagnosticsOpen && <SystemDiagnosticsModal onClose={() => setIsDiagnosticsOpen(false)} />}
+      {isBiometricManagerOpen && <BiometricManagerModal onClose={() => setIsBiometricManagerOpen(false)} />}
     </div>
   );
 }

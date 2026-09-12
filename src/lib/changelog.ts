@@ -15,7 +15,7 @@ export const CHANGELOG: ReleaseNote[] = [
     {
         version: "1.2.0",
         date: "September 11, 2026",
-        tagline: "Secure Document Custody & Settings Overhaul",
+        tagline: "Secure Document Custody & System Controls",
         features: [
             { 
                 icon: "🤝", 
@@ -31,6 +31,16 @@ export const CHANGELOG: ReleaseNote[] = [
                 icon: "🎨", 
                 title: "Settings Redesign", 
                 desc: "Completely overhauled the Account Settings with a sleek, native-style Profile ID Card and clean collapsible menus." 
+            },
+            { 
+                icon: "📱", 
+                title: "Biometric Device Manager", 
+                desc: "Added the ability to securely review and unenroll your registered Face ID or Fingerprint devices directly from the app." 
+            },
+            { 
+                icon: "🛠️", 
+                title: "System Diagnostics", 
+                desc: "New IT troubleshooting tool that displays network status, OS, browser environment, and allows one-click copying for quick support." 
             },
             { 
                 icon: "🛡️", 
