@@ -33,6 +33,11 @@ export const CHANGELOG: ReleaseNote[] = [
                 desc: "Completely overhauled the Account Settings with a sleek, native-style Profile ID Card and clean collapsible menus." 
             },
             { 
+                icon: "🛡️", 
+                title: "Branded Biometric Setup", 
+                desc: "Added a custom, branded registration flow for configuring your device's Face ID and Fingerprint passkeys." 
+            },
+            { 
                 icon: "📱", 
                 title: "Biometric Device Manager", 
                 desc: "Added the ability to securely review and unenroll your registered Face ID or Fingerprint devices directly from the app." 
@@ -43,7 +48,12 @@ export const CHANGELOG: ReleaseNote[] = [
                 desc: "New IT troubleshooting tool that displays network status, OS, browser environment, and allows one-click copying for quick support." 
             },
             { 
-                icon: "🛡️", 
+                icon: "☁️", 
+                title: "Force App Update", 
+                desc: "Added a dedicated check for updates button to instantly download and apply the latest FileTrackr release." 
+            },
+            { 
+                icon: "🔒", 
                 title: "Secure Logout", 
                 desc: "Added a full-width, bottom-sheet confirmation modal to prevent accidental logouts and protect your session." 
             },

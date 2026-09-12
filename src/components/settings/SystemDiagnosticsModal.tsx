@@ -1,23 +1,32 @@
 import { useState, useEffect } from 'react';
-import { X, Activity, Wifi, WifiOff, Copy, CheckCircle2, Globe, Cpu } from 'lucide-react';
+import { X, Activity, Wifi, WifiOff, Copy, CheckCircle2, Globe, Cpu, Fingerprint } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function SystemDiagnosticsModal({ onClose }: { onClose: () => void }) {
     const [isClosing, setIsClosing] = useState(false);
     const [copied, setCopied] = useState(false);
     const [isOnline, setIsOnline] = useState(navigator.onLine);
+    
+    // New state for Biometrics
+    const [hasBiometrics, setHasBiometrics] = useState(false);
 
     const handleClose = () => {
         setIsClosing(true);
         setTimeout(onClose, 300);
     };
 
-    // Monitor network status live
+    // Monitor network status live and check biometrics
     useEffect(() => {
         const handleOnline = () => setIsOnline(true);
         const handleOffline = () => setIsOnline(false);
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
+        
+        // Check if the browser supports the Web Authentication API
+        if (window.PublicKeyCredential !== undefined && typeof window.PublicKeyCredential === 'function') {
+            setHasBiometrics(true);
+        }
+
         return () => {
             window.removeEventListener('online', handleOnline);
             window.removeEventListener('offline', handleOffline);
@@ -50,8 +59,14 @@ export default function SystemDiagnosticsModal({ onClose }: { onClose: () => voi
 
     const specs = getSystemSpecs();
     
-    // The exact string that will be copied for the ICT Officer (You!)
-    const diagnosticText = `FileTrackr Diagnostics\nVersion: ${typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.2.0'}\nOS: ${specs.os}\nBrowser: ${specs.browser}\nMode: ${specs.isStandalone ? 'Installed App' : 'Web Tab'}\nNetwork: ${isOnline ? 'Online' : 'Offline'}`;
+    // Added Biometrics status to the copied text
+    const diagnosticText = `FileTrackr Diagnostics
+Version: ${typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.2.0'}
+OS: ${specs.os}
+Browser: ${specs.browser}
+Mode: ${specs.isStandalone ? 'Installed App' : 'Web Tab'}
+Network: ${isOnline ? 'Online' : 'Offline'}
+Biometrics API: ${hasBiometrics ? 'Supported' : 'Not Supported'}`;
 
     const handleCopy = () => {
         navigator.clipboard.writeText(diagnosticText);
@@ -117,6 +132,22 @@ export default function SystemDiagnosticsModal({ onClose }: { onClose: () => voi
                                 </div>
                             </div>
                         </div>
+
+                        <div className="h-px w-full bg-slate-100"></div>
+
+                        {/* Added Biometrics Row */}
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className={`p-2 rounded-lg ${hasBiometrics ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'}`}>
+                                    <Fingerprint size={18} />
+                                </div>
+                                <div>
+                                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Biometrics API</p>
+                                    <p className="text-sm font-bold text-slate-800">{hasBiometrics ? 'Supported' : 'Not Supported'}</p>
+                                </div>
+                            </div>
+                        </div>
+
                     </div>
 
                     <button 

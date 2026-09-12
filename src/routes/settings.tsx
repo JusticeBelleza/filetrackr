@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-    Shield, Lock, Eye, EyeOff, Save, Check, AlertCircle, Mail, Briefcase, Phone, Building2, Edit3, Hash, User, Fingerprint, Sparkles, Star, ChevronRight, ChevronDown, FileText, Settings as SettingsIcon, LogOut, Activity
+    Shield, Lock, Eye, EyeOff, Save, Check, AlertCircle, Mail, Briefcase, Phone, Building2, Edit3, Hash, User, Fingerprint, Sparkles, Star, ChevronRight, ChevronDown, FileText, Settings as SettingsIcon, LogOut, Activity, DownloadCloud
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '../lib/supabase';
@@ -9,9 +9,11 @@ import ReactMarkdown from 'react-markdown';
 import { legalContents } from './legalDocs'; 
 import { CHANGELOG } from '../lib/changelog'; 
 
-// Import our new modular modals
+// Import modular modals
 import SystemDiagnosticsModal from '../components/settings/SystemDiagnosticsModal';
 import BiometricManagerModal from '../components/settings/BiometricManagerModal';
+import AppUpdateModal from '../components/settings/AppUpdateModal';
+import RegisterBiometricsModal from '../components/settings/RegisterBiometricsModal';
 
 // --- Shared Modal Animation Styles ---
 const modalAnimationStyles = `
@@ -54,16 +56,16 @@ export default function Settings() {
   
   // Modals State
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
   const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
   const [isBiometricManagerOpen, setIsBiometricManagerOpen] = useState(false);
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [isClosingLogout, setIsClosingLogout] = useState(false);
 
   const [openLegalModal, setOpenLegalModal] = useState<"privacy" | "terms" | "aup" | null>(null);
   const [isClosingLegal, setIsClosingLegal] = useState(false);
-
-  const [isRegisteringPasskey, setIsRegisteringPasskey] = useState(false);
 
   // Edit Profile Modal States
   const [isEditing, setIsEditing] = useState(false);
@@ -170,21 +172,6 @@ export default function Settings() {
       updateProfileMutation.mutate(formData);
   };
 
-  const handleRegisterPasskey = async () => {
-      setIsRegisteringPasskey(true);
-      try {
-          const { error } = await supabase.auth.registerPasskey();
-          if (error) throw error;
-          localStorage.setItem('filetrackr_passkey_registered', 'true');
-          toast.success("Device registered successfully!", { description: "You can now use Face ID / Touch ID to log in." });
-      } catch (err: unknown) {
-          const errorMessage = err instanceof Error ? err.message : "An unexpected error occurred.";
-          toast.error("Failed to register device", { description: errorMessage });
-      } finally {
-          setIsRegisteringPasskey(false);
-      }
-  };
-
   const handleCloseLogoutModal = () => {
       setIsClosingLogout(true);
       setTimeout(() => {
@@ -247,7 +234,7 @@ export default function Settings() {
       <div className="px-5 sm:px-10 py-6 pb-12">
           
           {/* --- PROFILE ID CARD --- */}
-          <div className="bg-white border border-slate-300 rounded-[2rem] p-6 sm:p-8 shadow-md relative mb-8">
+          <div className="bg-white border border-slate-300 rounded-2xl p-6 sm:p-8 shadow-md relative mb-8">
               
               <div className="absolute top-5 right-5 sm:top-6 sm:right-6">
                    <button 
@@ -284,13 +271,14 @@ export default function Settings() {
               
               <CollapsibleGroup title="Security" icon={<Shield size={20} />}>
                   <SettingsMenuRow icon={<Lock size={18} />} label="Change Password" onClick={() => setIsPasswordModalOpen(true)} />
-                  <SettingsMenuRow icon={<Fingerprint size={18} />} label="Register Biometrics" onClick={handleRegisterPasskey} isLoading={isRegisteringPasskey} />
+                  <SettingsMenuRow icon={<Fingerprint size={18} />} label="Register Biometrics" onClick={() => setIsRegisterModalOpen(true)} />
               </CollapsibleGroup>
 
               <CollapsibleGroup title="System" icon={<SettingsIcon size={20} />} hasUpdate={hasUnseenUpdate}>
-                  <SettingsMenuRow icon={<Sparkles size={18} />} label="Release Notes" onClick={handleOpenWhatsNew} hasUpdate={hasUnseenUpdate} />
                   <SettingsMenuRow icon={<Fingerprint size={18} />} label="Manage Biometric Devices" onClick={() => setIsBiometricManagerOpen(true)} />
                   <SettingsMenuRow icon={<Activity size={18} />} label="System Diagnostics" onClick={() => setIsDiagnosticsOpen(true)} />
+                  <SettingsMenuRow icon={<DownloadCloud size={18} />} label="Check for Updates" onClick={() => setIsUpdateModalOpen(true)} />
+                  <SettingsMenuRow icon={<Sparkles size={18} />} label="Release Notes" onClick={handleOpenWhatsNew} hasUpdate={hasUnseenUpdate} />
               </CollapsibleGroup>
 
               <CollapsibleGroup title="Legal Documents" icon={<FileText size={20} />}>
@@ -473,6 +461,8 @@ export default function Settings() {
       {showWhatsNew && <WhatsNewModal onClose={() => setShowWhatsNew(false)} />}
       {isDiagnosticsOpen && <SystemDiagnosticsModal onClose={() => setIsDiagnosticsOpen(false)} />}
       {isBiometricManagerOpen && <BiometricManagerModal onClose={() => setIsBiometricManagerOpen(false)} />}
+      {isUpdateModalOpen && <AppUpdateModal currentVersion={currentVersion} onClose={() => setIsUpdateModalOpen(false)} />}
+      {isRegisterModalOpen && <RegisterBiometricsModal onClose={() => setIsRegisterModalOpen(false)} />}
     </div>
   );
 }
