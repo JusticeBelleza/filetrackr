@@ -14,9 +14,24 @@ export interface ReleaseNote {
 export const CHANGELOG: ReleaseNote[] = [
     {
         version: "1.2.0",
-        date: "September 11, 2026",
-        tagline: "Secure Document Custody & System Controls",
+        date: "September 12, 2026",
+        tagline: "Smart Daily Overview & Turnaround SLA Monitoring",
         features: [
+            { 
+                icon: "✨", 
+                title: "Smart Daily Overview", 
+                desc: "Added a conversational assistant greeting widget that analyzes your active queue, rush items, and returned documents right when you log in." 
+            },
+            { 
+                icon: "⏱️", 
+                title: "Turnaround Monitor", 
+                desc: "Integrated a 3-column SLA tracker categorizing assigned documents into Healthy (<24h), Warning (24-48h), and Critical (>48h) metrics." 
+            },
+            { 
+                icon: "🔍", 
+                title: "Interactive SLA Modals", 
+                desc: "Clicking any Turnaround Monitor card opens a responsive, paginated modal displaying document numbers, titles, categories, and rush badges." 
+            },
             { 
                 icon: "🤝", 
                 title: "Digital Handshake", 
@@ -61,11 +76,6 @@ export const CHANGELOG: ReleaseNote[] = [
                 icon: "🔄", 
                 title: "Smart Creator Bypass", 
                 desc: "Re-assigning a document back to the person who created it automatically skips the handshake phase." 
-            },
-            { 
-                icon: "⏱️", 
-                title: "Active Turnaround Time", 
-                desc: "The digital trail now calculates and displays exactly how long a document sat idle at each step." 
             }
         ]
     },
