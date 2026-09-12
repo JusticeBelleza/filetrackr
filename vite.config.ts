@@ -3,6 +3,7 @@ import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import legacy from '@vitejs/plugin-legacy';
 import packageJson from './package.json' with { type: 'json' };
 
 export default defineConfig({
@@ -13,10 +14,25 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    
+    // --- Added: The Universal Compatibility Layer ---
+    legacy({
+      targets: [
+        'defaults',
+        'not IE 11',
+        'ios >= 11',
+        'android >= 5',
+        'samsung >= 9' // Explicitly fixes Samsung Internet!
+      ],
+      // Polyfills modern async/await features for older engines
+      additionalLegacyPolyfills: ['regenerator-runtime/runtime']
+    }),
+
     VitePWA({
       registerType: 'autoUpdate',
       // Forces the new Service Worker to take over immediately for seamless updates
       workbox: {
+        cleanupOutdatedCaches: true, // Added to prevent white screens on future updates
         clientsClaim: true,
         skipWaiting: true
       },
