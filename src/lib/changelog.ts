@@ -13,7 +13,7 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
     {
-        version: "1.2.1",
+        version: "1.2.0",
         date: "September 13, 2026",
         tagline: "Lazy-Loading Searchable Dropdowns & UI Polish",
         features: [
