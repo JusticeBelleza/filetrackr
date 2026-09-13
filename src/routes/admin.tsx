@@ -10,7 +10,8 @@ import { toast } from 'sonner';
 // --- Import React Query Hooks & Components ---
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
-import StorageMonitor from '../components/system/StorageMonitor'; // <-- NEW IMPORT
+import StorageMonitor from '../components/system/StorageMonitor'; 
+import DepartmentSelect from '../components/ui/DepartmentSelect'; // <-- 1. NEW IMPORT
 
 // --- Shared Modal Animation Styles ---
 const modalAnimationStyles = `
@@ -90,6 +91,9 @@ export default function SystemAdmin() {
   // --- Accordion & Pagination State for Employee Directory ---
   const [expandedDepts, setExpandedDepts] = useState<Record<string, boolean>>({});
   const [folderPages, setFolderPages] = useState<Record<string, number>>({});
+
+  // --- 3. Audit Log Search State ---
+  const [auditSearch, setAuditSearch] = useState('');
 
   // --- Modal Open/Close States ---
   const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
@@ -182,6 +186,18 @@ export default function SystemAdmin() {
   const employees = useMemo(() => adminData?.employees || [], [adminData?.employees]);
   const auditLogs = useMemo(() => adminData?.auditLogs || [], [adminData?.auditLogs]);
 
+  // --- 3. Filtered Audit Logs Logic ---
+  const filteredAuditLogs = useMemo(() => {
+      if (!auditSearch.trim()) return auditLogs;
+      const term = auditSearch.toLowerCase();
+      return auditLogs.filter(log => 
+          log.user_name?.toLowerCase().includes(term) || 
+          log.action?.toLowerCase().includes(term) || 
+          log.id.toString().includes(term) ||
+          log.ip_address?.toLowerCase().includes(term)
+      );
+  }, [auditLogs, auditSearch]);
+
   // --- Group Employees by Department (Minimalist Folder Prep) ---
   const employeesByDepartment = useMemo(() => {
       const grouped: Record<string, typeof employees> = {};
@@ -227,7 +243,7 @@ export default function SystemAdmin() {
   const openEmployeeModal = () => {
       setNewEmp({ 
           emp_id: '', name: '', email: '', designation: '', 
-          department: departments[0]?.name || '', contactNumber: '', 
+          department: '', contactNumber: '', 
           password: '', confirmPassword: '' 
       });
       setShowPassword(false);
@@ -318,7 +334,7 @@ export default function SystemAdmin() {
   // Employee Handlers
   const handleAddEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newEmp.emp_id || !newEmp.name || !newEmp.email || !newEmp.designation || !newEmp.contactNumber || !newEmp.password) { 
+    if (!newEmp.emp_id || !newEmp.name || !newEmp.email || !newEmp.designation || !newEmp.contactNumber || !newEmp.password || !newEmp.department) { 
         toast.error('Please fill all required fields.'); return; 
     }
     if (newEmp.password !== newEmp.confirmPassword) {
@@ -660,7 +676,7 @@ export default function SystemAdmin() {
                                                                     <KeyRound size={18} className="w-4 h-4 sm:w-5 sm:h-5" />
                                                                 </button>
                                                                 <button 
-                                                                    onClick={() => setDeleteEmpConfirm({ id: emp.id, name: emp.name, emp_id: emp.emp_id })} 
+                                                                    onClick={() => setDeleteEmpConfirm({ id: emp.id, name: emp.name, emp_id: emp.emp_id || 'Unknown' })} 
                                                                     className="p-2 sm:p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 bg-white rounded-xl transition-all shrink-0 border-2 border-slate-200 hover:border-red-200 active:scale-95 shadow-sm mt-1 sm:mt-0"
                                                                     title="Remove Employee"
                                                                 >
@@ -719,7 +735,14 @@ export default function SystemAdmin() {
                 </div>
                 <div className="relative w-full sm:w-64">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                    <input type="text" placeholder="Search logs..." className="w-full pl-9 pr-4 py-2 bg-slate-800 border-2 border-slate-700 rounded-lg text-sm text-white placeholder:text-slate-400 focus:border-blue-500 outline-none transition-colors" />
+                    {/* --- 3. AUDIT LOG SEARCH INPUT --- */}
+                    <input 
+                        type="text" 
+                        value={auditSearch}
+                        onChange={(e) => setAuditSearch(e.target.value)}
+                        placeholder="Search logs..." 
+                        className="w-full pl-9 pr-4 py-2 bg-slate-800 border-2 border-slate-700 rounded-lg text-sm text-white placeholder:text-slate-400 focus:border-blue-500 outline-none transition-colors" 
+                    />
                 </div>
             </div>
             
@@ -735,7 +758,8 @@ export default function SystemAdmin() {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                        {auditLogs.map((log) => (
+                        {/* --- 3. MAPPING FILTERED LOGS --- */}
+                        {filteredAuditLogs.map((log) => (
                             <tr key={log.id} className="hover:bg-slate-50 transition-colors">
                                 <td className="p-4 text-sm font-mono text-slate-500">#{log.id}</td>
                                 <td className="p-4 text-sm font-bold text-slate-700 whitespace-nowrap">{new Date(log.created_at).toLocaleString()}</td>
@@ -746,8 +770,15 @@ export default function SystemAdmin() {
                         ))}
                     </tbody>
                 </table>
-                {auditLogs.length === 0 && (
-                    <div className="p-8 text-center text-slate-500 font-bold">No audit logs found.</div>
+                
+                {/* --- 3. AUDIT LOG EMPTY STATE --- */}
+                {filteredAuditLogs.length === 0 && (
+                    <div className="p-8 text-center flex flex-col items-center justify-center gap-2">
+                        <Search size={32} className="text-slate-300" />
+                        <p className="text-slate-500 font-bold">
+                            {auditSearch ? `No logs found matching "${auditSearch}"` : 'No audit logs available.'}
+                        </p>
+                    </div>
                 )}
             </div>
             <div className="bg-slate-50 p-4 border-t-2 border-slate-200 text-center">
@@ -814,7 +845,7 @@ export default function SystemAdmin() {
       
       {/* MODAL 1: ADD DEPARTMENT / OFFICE */}
       {isDeptModalOpen && (
-        <div className={`fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/50 backdrop-blur-sm ${isClosingDept ? 'animate-overlay-fade-out' : 'animate-overlay-fade'}`}>
+        <div className={`fixed inset-0 z-[999] flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/50 backdrop-blur-sm ${isClosingDept ? 'animate-overlay-fade-out' : 'animate-overlay-fade'}`}>
           <div className={`bg-white w-full max-w-lg rounded-t-[1.5rem] sm:rounded-2xl shadow-2xl overflow-hidden ${isClosingDept ? 'animate-responsive-modal-close' : 'animate-responsive-modal'}`}>
             <div className="bg-slate-900 text-white p-5 flex items-center justify-between">
               <h3 className="font-black text-xl">Add New Office</h3>
@@ -863,7 +894,7 @@ export default function SystemAdmin() {
 
       {/* DELETE CONFIRMATION MODAL - OFFICES */}
       {deleteConfirm && (
-        <div className={`fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/50 backdrop-blur-sm ${isClosingDelete ? 'animate-overlay-fade-out' : 'animate-overlay-fade'}`}>
+        <div className={`fixed inset-0 z-[999] flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/50 backdrop-blur-sm ${isClosingDelete ? 'animate-overlay-fade-out' : 'animate-overlay-fade'}`}>
           <div className={`bg-white w-full max-w-md rounded-t-[1.5rem] sm:rounded-[2rem] shadow-2xl overflow-hidden ${isClosingDelete ? 'animate-responsive-modal-close' : 'animate-responsive-modal'}`}>
             <div className="bg-red-600 text-white p-5 sm:px-6 flex items-center justify-between">
               <h3 className="font-black text-xl flex items-center gap-2"><AlertCircle size={22} strokeWidth={2.5} /> Confirm Deletion</h3>
@@ -884,7 +915,7 @@ export default function SystemAdmin() {
 
       {/* MODAL 2: ADD CATEGORY */}
       {isCatModalOpen && (
-        <div className={`fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/50 backdrop-blur-sm ${isClosingCat ? 'animate-overlay-fade-out' : 'animate-overlay-fade'}`}>
+        <div className={`fixed inset-0 z-[999] flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/50 backdrop-blur-sm ${isClosingCat ? 'animate-overlay-fade-out' : 'animate-overlay-fade'}`}>
           <div className={`bg-white w-full max-w-lg rounded-t-[1.5rem] sm:rounded-2xl shadow-2xl overflow-hidden ${isClosingCat ? 'animate-responsive-modal-close' : 'animate-responsive-modal'}`}>
             <div className="bg-slate-900 text-white p-5 flex items-center justify-between">
               <h3 className="font-black text-xl">Add Document Category</h3>
@@ -923,7 +954,7 @@ export default function SystemAdmin() {
 
       {/* DELETE CONFIRMATION MODAL - CATEGORIES */}
       {deleteCatConfirm && (
-        <div className={`fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/50 backdrop-blur-sm ${isClosingCatDelete ? 'animate-overlay-fade-out' : 'animate-overlay-fade'}`}>
+        <div className={`fixed inset-0 z-[999] flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/50 backdrop-blur-sm ${isClosingCatDelete ? 'animate-overlay-fade-out' : 'animate-overlay-fade'}`}>
           <div className={`bg-white w-full max-w-md rounded-t-[1.5rem] sm:rounded-[2rem] shadow-2xl overflow-hidden ${isClosingCatDelete ? 'animate-responsive-modal-close' : 'animate-responsive-modal'}`}>
             <div className="bg-red-600 text-white p-5 sm:px-6 flex items-center justify-between">
               <h3 className="font-black text-xl flex items-center gap-2"><AlertCircle size={22} strokeWidth={2.5} /> Confirm Deletion</h3>
@@ -1037,17 +1068,24 @@ export default function SystemAdmin() {
 
       {/* MODAL 3: REGISTER EMPLOYEE */}
       {isEmpModalOpen && (
-        <div className={`fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/50 backdrop-blur-sm ${isClosingEmp ? 'animate-overlay-fade-out' : 'animate-overlay-fade'}`}>
+        <div className={`fixed inset-0 z-[999] flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/50 backdrop-blur-sm ${isClosingEmp ? 'animate-overlay-fade-out' : 'animate-overlay-fade'}`}>
           <div className={`bg-white w-full max-w-lg rounded-t-[1.5rem] sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] ${isClosingEmp ? 'animate-responsive-modal-close' : 'animate-responsive-modal'}`}>
             <div className="bg-slate-900 text-white p-5 flex items-center justify-between shrink-0">
               <h3 className="font-black text-xl">Register New Employee</h3>
               <button onClick={closeEmpModal} className="p-2 bg-white/10 hover:bg-white/20 rounded-full"><X size={20} /></button>
             </div>
-            <form onSubmit={handleAddEmployee} className="p-6 space-y-5 overflow-y-auto custom-scrollbar flex-1">
+            <form onSubmit={handleAddEmployee} className="p-6 space-y-5 overflow-y-auto custom-scrollbar flex-1 relative">
               
               <div>
                 <label className="block text-sm font-bold text-slate-900 mb-1.5">Employee ID *</label>
-                <input type="text" value={newEmp.emp_id} onChange={(e) => setNewEmp({...newEmp, emp_id: e.target.value})} placeholder="EMP-2026-105" className="w-full p-3.5 bg-slate-50 border border-slate-200 focus:bg-white focus:border-blue-500 rounded-xl outline-none font-bold text-slate-900 font-mono text-base transition-colors" />
+                {/* --- 2. FORCED UPPERCASE ON ID INPUT --- */}
+                <input 
+                    type="text" 
+                    value={newEmp.emp_id} 
+                    onChange={(e) => setNewEmp({...newEmp, emp_id: e.target.value.toUpperCase()})} 
+                    placeholder="EMP-2026-105" 
+                    className="w-full p-3.5 bg-slate-50 border border-slate-200 focus:bg-white focus:border-blue-500 rounded-xl outline-none font-bold text-slate-900 font-mono text-base transition-colors" 
+                />
               </div>
 
               <div>
@@ -1070,17 +1108,17 @@ export default function SystemAdmin() {
                 <input type="tel" value={newEmp.contactNumber} onChange={(e) => setNewEmp({...newEmp, contactNumber: e.target.value})} placeholder="0917 123 4567" className="w-full p-3.5 bg-slate-50 border border-slate-200 focus:bg-white focus:border-blue-500 rounded-xl outline-none font-bold text-slate-900 text-base transition-colors" />
               </div>
 
-              <div>
+              <div className="relative z-50">
                 <label className="block text-sm font-bold text-slate-900 mb-1.5">Department / Agency *</label>
-                <CustomSelect 
-                    options={departments.map(d => ({ value: d.name, label: d.name }))} 
+                {/* --- 1. REPLACED WITH NEW DepartmentSelect COMPONENT --- */}
+                <DepartmentSelect 
                     value={newEmp.department} 
                     onChange={(val: string) => setNewEmp({...newEmp, department: val})} 
-                    placeholder="Select Department..." 
+                    isRelative={true}
                 />
               </div>
 
-              <div className="pt-2 border-t-2 border-slate-100">
+              <div className="pt-2 border-t-2 border-slate-100 relative z-10">
                   <div className="flex justify-between items-end mb-1.5">
                     <label className="block text-sm font-bold text-slate-900">Password *</label>
                     <button type="button" onClick={handleGeneratePassword} className="text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors flex items-center gap-1 bg-blue-50 px-2 py-1 rounded-md border border-blue-200 active:scale-95">
@@ -1105,7 +1143,7 @@ export default function SystemAdmin() {
                   </div>
               </div>
 
-              <div>
+              <div className="relative z-10">
                   <label className="block text-sm font-bold text-slate-900 mb-1.5">Confirm Password *</label>
                   <div className="relative">
                       <input 
@@ -1125,7 +1163,7 @@ export default function SystemAdmin() {
                   </div>
               </div>
 
-              <div className="pt-4 flex gap-3 shrink-0">
+              <div className="pt-4 flex gap-3 shrink-0 relative z-10">
                 <button type="button" onClick={closeEmpModal} className="flex-1 py-3.5 bg-white border-2 border-slate-300 text-slate-700 font-bold rounded-xl active:scale-95 transition-transform text-base">Cancel</button>
                 <button type="submit" className="flex-[1.5] py-3.5 bg-slate-900 text-white font-bold rounded-xl border-2 border-slate-900 active:scale-95 transition-transform text-base">Register Account</button>
               </div>

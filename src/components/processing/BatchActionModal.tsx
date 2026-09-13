@@ -1,149 +1,25 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { MapPin, CheckCircle, Ban, UserPlus, ArrowLeft, X, PenTool, Camera, Search, ChevronDown, Check } from 'lucide-react';
+import { MapPin, CheckCircle, Ban, UserPlus, ArrowLeft, X, PenTool, Camera, Check, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '../../lib/supabase';
 import { convertImageToScannedPDF } from '../../lib/utils';
 import type { DocumentItem, OptionType } from '../../types/processing';
 import SignaturePad, { type SignaturePadRef } from '../ui/SignaturePad';
 import EmployeeSelect from '../ui/EmployeeSelect'; 
-
-// --- INLINE CUSTOM SELECT (Still used for Office Selection) ---
-interface CustomSelectProps {
-    options: OptionType[];
-    value: string;
-    onChange: (val: string) => void;
-    placeholder?: string;
-    disabled?: boolean;
-    emptyText?: string;
-    isRelative?: boolean;
-    itemType?: string;
-}
-
-function CustomSelect({ options, value, onChange, placeholder, disabled = false, emptyText = "Loading options...", isRelative = false, itemType = "employee" }: CustomSelectProps) {
-    const [isOpen, setIsOpen] = useState(false);
-    const [searchTerm, setSearchTerm] = useState("");
-    const dropdownRef = useRef<HTMLDivElement>(null);
-    const menuRef = useRef<HTMLDivElement>(null); 
-    const searchInputRef = useRef<HTMLInputElement>(null);
- 
-    useEffect(() => {
-      function handleClickOutside(event: MouseEvent) {
-        if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) setIsOpen(false);
-      }
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, []);
-
-    useEffect(() => {
-      if (isOpen) {
-        setTimeout(() => {
-          menuRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }, 50);
-      } else {
-        setSearchTerm("");
-      }
-    }, [isOpen]);
-
-    const filteredOptions = options.filter(opt => {
-        const optLabel = typeof opt === 'string' ? opt : opt.label;
-        return optLabel.toLowerCase().includes(searchTerm.toLowerCase());
-    });
-
-    const MAX_ITEMS_TO_SHOW = 4;
-    const visibleOptions = filteredOptions.slice(0, MAX_ITEMS_TO_SHOW);
-    const hiddenCount = filteredOptions.length - visibleOptions.length;
-
-    const selectedOptionLabel = options.find(opt => (typeof opt === 'string' ? opt : opt.value) === value);
-    const displayLabel = selectedOptionLabel 
-        ? (typeof selectedOptionLabel === 'string' ? selectedOptionLabel : selectedOptionLabel.label)
-        : placeholder;
- 
-    return (
-      <div className="relative w-full" ref={dropdownRef}>
-        <button 
-            type="button" 
-            disabled={disabled}
-            onClick={() => !disabled && setIsOpen(!isOpen)} 
-            className={`w-full px-4 py-3 border-2 rounded-xl flex justify-between items-center transition-all text-sm sm:text-base outline-none active:scale-[0.99] ${
-                disabled ? 'bg-slate-50 border-slate-200 text-slate-500 cursor-not-allowed' :
-                isOpen ? 'border-blue-500 bg-white ring-4 ring-blue-500/10' : 'bg-white border-slate-200 hover:border-slate-300'
-            } ${!value && !disabled ? 'text-slate-500 font-medium' : 'text-slate-900 font-bold'}`}
-        >
-          <span className="truncate">{displayLabel}</span>
-          {!disabled && (
-              <ChevronDown size={20} className={`text-slate-400 transition-transform duration-300 ease-in-out sm:w-5 sm:h-5 ${isOpen ? 'rotate-180 text-slate-800' : ''}`} />
-          )}
-        </button>
-
-        {isOpen && !disabled && (
-          <div ref={menuRef} className={`${isRelative ? 'relative mt-2 mb-4' : 'absolute mt-1.5'} z-50 w-full bg-white border-2 border-slate-200 rounded-xl shadow-xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200`}>
-            
-            {options.length > 3 && (
-                <div className="p-2 border-b-2 border-slate-100 bg-white shrink-0">
-                    <div className="relative">
-                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                        <input
-                            ref={searchInputRef}
-                            type="text"
-                            placeholder="Type to search..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            onClick={(e) => e.stopPropagation()}
-                            className="w-full pl-9 pr-3 py-2.5 bg-white border-2 border-blue-100 rounded-lg text-sm focus:outline-none focus:border-blue-500 transition-all font-medium text-slate-800 placeholder:text-slate-400"
-                        />
-                    </div>
-                </div>
-            )}
-
-            <div className="max-h-[240px] overflow-y-auto p-1.5 space-y-1 custom-scrollbar">
-              {filteredOptions.length === 0 ? (
-                  <div className="px-4 py-6 text-sm text-slate-500 text-center font-medium">
-                      {searchTerm ? `No results for "${searchTerm}"` : emptyText}
-                  </div>
-              ) : (
-                  visibleOptions.map((option: OptionType, idx: number) => {
-                    const optValue = typeof option === 'string' ? option : option.value;
-                    const optLabel = typeof option === 'string' ? option : option.label;
-                    const isSelected = optValue === value;
-
-                    return (
-                      <div 
-                        key={idx} 
-                        onClick={() => { onChange(optValue); setIsOpen(false); }} 
-                        className={`px-4 py-3 text-sm sm:text-base rounded-lg cursor-pointer transition-colors flex items-center active:scale-95 ${isSelected ? 'bg-blue-600 text-white font-bold shadow-sm' : 'text-slate-700 hover:bg-slate-100 font-medium'}`}
-                      >
-                        {optLabel}
-                      </div>
-                    );
-                  })
-              )}
-            </div>
-
-            {hiddenCount > 0 && (
-                <div className="p-3 bg-slate-50 border-t-2 border-slate-100 shrink-0 text-center">
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                        +{hiddenCount} more {hiddenCount === 1 ? itemType : `${itemType}s`}. Keep typing to search.
-                    </p>
-                </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-}
+import DepartmentSelect from '../ui/DepartmentSelect'; 
 
 // --- Interfaces ---
 interface BatchModalProps {
     selectedDocs: DocumentItem[]; 
     currentUserName: string; 
-    departments: OptionType[]; 
+    departments: OptionType[]; // Kept to prevent parent component from breaking
     onClose: () => void; 
     onSuccess: () => void;
     onClearSelection?: () => void;
     isClosingProp?: boolean;
 }
 
-export default function BatchActionModal({ selectedDocs, currentUserName, departments, onClose, onSuccess, onClearSelection, isClosingProp = false }: BatchModalProps) {
+export default function BatchActionModal({ selectedDocs, currentUserName, onClose, onSuccess, onClearSelection, isClosingProp = false }: BatchModalProps) {
     const signaturePadRef = useRef<SignaturePadRef>(null);
 
     const [isClosing, setIsClosing] = useState(false);
@@ -166,8 +42,12 @@ export default function BatchActionModal({ selectedDocs, currentUserName, depart
     const [isLoadingOrigins, setIsLoadingOrigins] = useState(false);
     const [currentUserDept, setCurrentUserDept] = useState<string>(''); 
 
-    const canProcessBatch = useMemo(() => selectedDocs.every((doc) => doc.assigned_clerk === currentUserName), [selectedDocs, currentUserName]);
+    // --- BATCH VALIDATION LOGIC ---
+    const canProcessBatch = useMemo(() => selectedDocs.length > 0 && selectedDocs.every((doc) => doc.assigned_clerk === currentUserName && doc.status !== 'pending_receipt'), [selectedDocs, currentUserName]);
+    
     const isPendingHandshakeBatch = useMemo(() => selectedDocs.length > 0 && selectedDocs.every((doc) => doc.status === 'pending_receipt'), [selectedDocs]);
+    
+    const isMixedBatch = useMemo(() => selectedDocs.some(doc => doc.status === 'pending_receipt') && selectedDocs.some(doc => doc.status !== 'pending_receipt'), [selectedDocs]);
 
     const handleClose = () => { setIsClosing(true); setTimeout(onClose, 200); };
 
@@ -418,6 +298,7 @@ export default function BatchActionModal({ selectedDocs, currentUserName, depart
         }
     };
 
+    // --- RENDER MENU OPTIONS ---
     if (!activeAction) {
         return (
             <>
@@ -434,64 +315,77 @@ export default function BatchActionModal({ selectedDocs, currentUserName, depart
                             <span className="bg-[#eaf4f1] text-[#0f766e] text-[10px] font-black px-2 py-0.5 rounded-md">{selectedDocs.length} Docs</span>
                         </div>
 
-                        {!canProcessBatch && !isPendingHandshakeBatch && (
+                        {/* --- MIXED BATCH WARNING --- */}
+                        {isMixedBatch && (
+                            <div className="px-3 py-2.5 mx-1 mt-1 mb-1 bg-rose-50 border border-rose-100 rounded-xl">
+                                <p className="text-xs text-rose-600 font-bold leading-snug flex items-start gap-2">
+                                    <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                                    Mixed batch detected. Please select ONLY unreceived documents, or ONLY received documents.
+                                </p>
+                            </div>
+                        )}
+
+                        {!canProcessBatch && !isPendingHandshakeBatch && !isMixedBatch && (
                             <div className="px-3 py-2">
                                 <p className="text-xs text-amber-600 font-bold leading-snug">Processing restricted. Only Re-assign allowed.</p>
                             </div>
                         )}
                         
-                        {isPendingHandshakeBatch ? (
-                            <>
-                                <button onClick={() => setActiveAction('batch_receive')} className="flex items-center gap-3.5 w-full p-2 rounded-2xl transition-all hover:bg-emerald-50 active:scale-[0.98] group">
-                                    <div className="w-[2.4rem] h-[2.4rem] rounded-[0.8rem] bg-emerald-100 text-emerald-600 flex items-center justify-center transition-colors group-hover:bg-emerald-200 shrink-0">
-                                        <Check size={18} strokeWidth={3} />
-                                    </div>
-                                    <span className="font-bold text-[15px] text-slate-800">Receive Batch</span>
-                                </button>
-                                
-                                <button onClick={() => setActiveAction('batch_decline')} className="flex items-center gap-3.5 w-full p-2 rounded-2xl transition-all hover:bg-rose-50 active:scale-[0.98] group">
-                                    <div className="w-[2.4rem] h-[2.4rem] rounded-[0.8rem] bg-rose-100 text-rose-600 flex items-center justify-center transition-colors group-hover:bg-rose-200 shrink-0">
-                                        <Ban size={18} strokeWidth={2.5} />
-                                    </div>
-                                    <span className="font-bold text-[15px] text-slate-800">Decline Batch</span>
-                                </button>
-                            </>
-                        ) : (
-                            <>
-                                {canProcessBatch && (
-                                    <button onClick={() => setActiveAction('add_step')} className="flex items-center gap-3.5 w-full p-2 rounded-2xl transition-all hover:bg-slate-50 active:scale-[0.98] group">
-                                        <div className="w-[2.4rem] h-[2.4rem] rounded-[0.8rem] bg-[#eaf4f1] text-[#0f766e] flex items-center justify-center transition-colors group-hover:bg-[#d5ebe5] shrink-0">
-                                            <MapPin size={18} strokeWidth={2.5} />
+                        {/* Only show buttons if it is NOT a mixed batch */}
+                        {!isMixedBatch && (
+                            isPendingHandshakeBatch ? (
+                                <>
+                                    <button onClick={() => setActiveAction('batch_receive')} className="flex items-center gap-3.5 w-full p-2 rounded-2xl transition-all hover:bg-emerald-50 active:scale-[0.98] group">
+                                        <div className="w-[2.4rem] h-[2.4rem] rounded-[0.8rem] bg-emerald-100 text-emerald-600 flex items-center justify-center transition-colors group-hover:bg-emerald-200 shrink-0">
+                                            <Check size={18} strokeWidth={3} />
                                         </div>
-                                        <span className="font-bold text-[15px] text-slate-800">Add Step</span>
+                                        <span className="font-bold text-[15px] text-slate-800">Receive Batch</span>
                                     </button>
-                                )}
-                                
-                                {canProcessBatch && (
-                                    <button onClick={() => setActiveAction('complete')} className="flex items-center gap-3.5 w-full p-2 rounded-2xl transition-all hover:bg-slate-50 active:scale-[0.98] group">
-                                        <div className="w-[2.4rem] h-[2.4rem] rounded-[0.8rem] bg-[#eaf4f1] text-[#0f766e] flex items-center justify-center transition-colors group-hover:bg-[#d5ebe5] shrink-0">
-                                            <CheckCircle size={18} strokeWidth={2.5} />
-                                        </div>
-                                        <span className="font-bold text-[15px] text-slate-800">Complete Batch</span>
-                                    </button>
-                                )}
-                                
-                                <button onClick={() => setActiveAction('reassign')} className="flex items-center gap-3.5 w-full p-2 rounded-2xl transition-all hover:bg-slate-50 active:scale-[0.98] group">
-                                    <div className="w-[2.4rem] h-[2.4rem] rounded-[0.8rem] bg-[#eaf4f1] text-[#0f766e] flex items-center justify-center transition-colors group-hover:bg-[#d5ebe5] shrink-0">
-                                        <UserPlus size={18} strokeWidth={2.5} />
-                                    </div>
-                                    <span className="font-bold text-[15px] text-slate-800">Re-assign</span>
-                                </button>
-                                
-                                {canProcessBatch && (
-                                    <button onClick={() => setActiveAction('reject')} className="flex items-center gap-3.5 w-full p-2 rounded-2xl transition-all hover:bg-slate-50 active:scale-[0.98] group">
-                                        <div className="w-[2.4rem] h-[2.4rem] rounded-[0.8rem] bg-rose-50 text-rose-600 flex items-center justify-center transition-colors group-hover:bg-rose-100 shrink-0">
+                                    
+                                    <button onClick={() => setActiveAction('batch_decline')} className="flex items-center gap-3.5 w-full p-2 rounded-2xl transition-all hover:bg-rose-50 active:scale-[0.98] group">
+                                        <div className="w-[2.4rem] h-[2.4rem] rounded-[0.8rem] bg-rose-100 text-rose-600 flex items-center justify-center transition-colors group-hover:bg-rose-200 shrink-0">
                                             <Ban size={18} strokeWidth={2.5} />
                                         </div>
-                                        <span className="font-bold text-[15px] text-slate-800">Return / Reject</span>
+                                        <span className="font-bold text-[15px] text-slate-800">Decline Batch</span>
                                     </button>
-                                )}
-                            </>
+                                </>
+                            ) : (
+                                <>
+                                    {canProcessBatch && (
+                                        <button onClick={() => setActiveAction('add_step')} className="flex items-center gap-3.5 w-full p-2 rounded-2xl transition-all hover:bg-slate-50 active:scale-[0.98] group">
+                                            <div className="w-[2.4rem] h-[2.4rem] rounded-[0.8rem] bg-[#eaf4f1] text-[#0f766e] flex items-center justify-center transition-colors group-hover:bg-[#d5ebe5] shrink-0">
+                                                <MapPin size={18} strokeWidth={2.5} />
+                                            </div>
+                                            <span className="font-bold text-[15px] text-slate-800">Add Step</span>
+                                        </button>
+                                    )}
+                                    
+                                    {canProcessBatch && (
+                                        <button onClick={() => setActiveAction('complete')} className="flex items-center gap-3.5 w-full p-2 rounded-2xl transition-all hover:bg-slate-50 active:scale-[0.98] group">
+                                            <div className="w-[2.4rem] h-[2.4rem] rounded-[0.8rem] bg-[#eaf4f1] text-[#0f766e] flex items-center justify-center transition-colors group-hover:bg-[#d5ebe5] shrink-0">
+                                                <CheckCircle size={18} strokeWidth={2.5} />
+                                            </div>
+                                            <span className="font-bold text-[15px] text-slate-800">Complete Batch</span>
+                                        </button>
+                                    )}
+                                    
+                                    <button onClick={() => setActiveAction('reassign')} className="flex items-center gap-3.5 w-full p-2 rounded-2xl transition-all hover:bg-slate-50 active:scale-[0.98] group">
+                                        <div className="w-[2.4rem] h-[2.4rem] rounded-[0.8rem] bg-[#eaf4f1] text-[#0f766e] flex items-center justify-center transition-colors group-hover:bg-[#d5ebe5] shrink-0">
+                                            <UserPlus size={18} strokeWidth={2.5} />
+                                        </div>
+                                        <span className="font-bold text-[15px] text-slate-800">Re-assign</span>
+                                    </button>
+                                    
+                                    {canProcessBatch && (
+                                        <button onClick={() => setActiveAction('reject')} className="flex items-center gap-3.5 w-full p-2 rounded-2xl transition-all hover:bg-slate-50 active:scale-[0.98] group">
+                                            <div className="w-[2.4rem] h-[2.4rem] rounded-[0.8rem] bg-rose-50 text-rose-600 flex items-center justify-center transition-colors group-hover:bg-rose-100 shrink-0">
+                                                <Ban size={18} strokeWidth={2.5} />
+                                            </div>
+                                            <span className="font-bold text-[15px] text-slate-800">Return / Reject</span>
+                                        </button>
+                                    )}
+                                </>
+                            )
                         )}
 
                         <div className="h-[1px] bg-slate-100 my-1 mx-2"></div>
@@ -577,8 +471,23 @@ export default function BatchActionModal({ selectedDocs, currentUserName, depart
 
                         {activeAction === 'add_step' && (
                             <>
-                                <div className="relative z-20"><label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Next Destination Office *</label><CustomSelect options={departments} value={destination} onChange={setDestination} placeholder="Select receiving office..." isRelative={true} itemType="office" /></div>
-                                <div className="relative z-10"><label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Receiving Clerk *</label><input type="text" value={receivingClerk} onChange={(e) => setReceivingClerk(e.target.value)} placeholder="Enter name of receiving clerk..." className="w-full px-4 py-3.5 bg-slate-50/50 border border-slate-200 focus:bg-white focus:border-teal-500 focus:ring-4 focus:ring-teal-500/10 rounded-xl outline-none font-bold text-slate-700 text-sm transition-all" /></div>
+                                <div className="relative z-20">
+                                    <DepartmentSelect 
+                                        value={destination} 
+                                        onChange={setDestination} 
+                                        isRelative={true} 
+                                    />
+                                </div>
+                                <div className="relative z-10">
+                                    <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Receiving Clerk *</label>
+                                    <input 
+                                        type="text" 
+                                        value={receivingClerk} 
+                                        onChange={(e) => setReceivingClerk(e.target.value)} 
+                                        placeholder="Enter name of receiving clerk..." 
+                                        className="w-full px-4 py-3.5 bg-slate-50/50 border border-slate-200 focus:bg-white focus:border-teal-500 focus:ring-4 focus:ring-teal-500/10 rounded-xl outline-none font-bold text-slate-700 text-sm transition-all" 
+                                    />
+                                </div>
                                 <div>
                                     <div className="flex justify-between items-center mb-1.5">
                                         <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5"><PenTool size={13}/> Signature *</label>

@@ -21,8 +21,8 @@ interface DocumentCardProps {
     onCancel?: (doc: DocumentItem) => void;
     onRevise?: (doc: DocumentItem) => void;
     onAction?: (doc: DocumentItem) => void;
-    onReceive?: (doc: DocumentItem) => void; // <-- NEW
-    onDecline?: (doc: DocumentItem) => void; // <-- NEW
+    onReceive?: (doc: DocumentItem) => void; 
+    onDecline?: (doc: DocumentItem) => void; 
 }
 
 export default function DocumentCard({
@@ -167,10 +167,18 @@ export default function DocumentCard({
                     )}
                     
                     <div className="flex flex-col min-w-0 flex-1">
-                        <div className="flex items-center gap-2 mb-0.5">
+                        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                             <span className="text-[10px] font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 shrink-0">
                                 {localDoc.reference_no || localDoc.id.substring(0, 8)}
                             </span>
+                            
+                            {/* --- THE NEW UNRECEIVED WARNING BADGE --- */}
+                            {localDoc.status === 'pending_receipt' && (
+                                <span className="flex items-center gap-0.5 text-[9px] font-black text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 uppercase tracking-wider shrink-0" title="You have not accepted custody of this document yet">
+                                    <AlertCircle size={10} strokeWidth={3}/> Pending
+                                </span>
+                            )}
+
                             {localDoc.is_urgent && (
                                 <span className="flex items-center gap-0.5 text-[9px] font-black text-red-700 bg-red-50 px-1.5 py-0.5 rounded border border-red-200 uppercase tracking-wider animate-pulse shrink-0">
                                     <AlertCircle size={10} strokeWidth={3}/> Rush
