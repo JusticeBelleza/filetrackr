@@ -36,6 +36,26 @@ export const CHANGELOG: ReleaseNote[] = [
                 icon: "🎨", 
                 title: "Consistent Visual Borders", 
                 desc: "Standardized distinct high-contrast borders and clean search headers across all selector elements for a uniform professional look." 
+            },
+            { 
+                icon: "⚠️", 
+                title: "Mixed Batch Validation", 
+                desc: "Added intelligent validation to the batch processing modal that automatically detects and blocks users from mixing 'Pending' and 'Received' documents." 
+            },
+            { 
+                icon: "🏷️", 
+                title: "Unreceived Status Badge", 
+                desc: "Added an eye-catching amber 'Pending' badge directly to the document cards to visually remind users to execute the digital handshake." 
+            },
+            { 
+                icon: "🔠", 
+                title: "Auto-Formatting Employee IDs", 
+                desc: "The admin registration portal now automatically forces uppercase formatting on Employee IDs to ensure clean database indexing." 
+            },
+            { 
+                icon: "🔎", 
+                title: "Client-Side Audit Search", 
+                desc: "Activated the search bar in the Admin Audit Logs, allowing instant filtering by User, Action, Log ID, or IP Address with a custom empty state." 
             }
         ]
     },
