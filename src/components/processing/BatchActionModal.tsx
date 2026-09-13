@@ -1,12 +1,13 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { MapPin, CheckCircle, Ban, UserPlus, ArrowLeft, X, PenTool, Camera, Search, ChevronDown, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '../../lib/supabase';
 import { convertImageToScannedPDF } from '../../lib/utils';
 import type { DocumentItem, OptionType } from '../../types/processing';
 import SignaturePad, { type SignaturePadRef } from '../ui/SignaturePad';
+import EmployeeSelect from '../ui/EmployeeSelect'; 
 
-// --- UPGRADED SEARCHABLE CUSTOM SELECT ---
+// --- INLINE CUSTOM SELECT (Still used for Office Selection) ---
 interface CustomSelectProps {
     options: OptionType[];
     value: string;
@@ -18,7 +19,7 @@ interface CustomSelectProps {
     itemType?: string;
 }
 
-function CustomSelect({ options, value, onChange, placeholder, disabled = false, emptyText = "Loading options...", isRelative = false, itemType = "option" }: CustomSelectProps) {
+function CustomSelect({ options, value, onChange, placeholder, disabled = false, emptyText = "Loading options...", isRelative = false, itemType = "employee" }: CustomSelectProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -131,18 +132,18 @@ function CustomSelect({ options, value, onChange, placeholder, disabled = false,
     );
 }
 
+// --- Interfaces ---
 interface BatchModalProps {
     selectedDocs: DocumentItem[]; 
     currentUserName: string; 
     departments: OptionType[]; 
-    colleagues: string[]; 
     onClose: () => void; 
     onSuccess: () => void;
     onClearSelection?: () => void;
     isClosingProp?: boolean;
 }
 
-export default function BatchActionModal({ selectedDocs, currentUserName, departments, colleagues, onClose, onSuccess, onClearSelection, isClosingProp = false }: BatchModalProps) {
+export default function BatchActionModal({ selectedDocs, currentUserName, departments, onClose, onSuccess, onClearSelection, isClosingProp = false }: BatchModalProps) {
     const signaturePadRef = useRef<SignaturePadRef>(null);
 
     const [isClosing, setIsClosing] = useState(false);
@@ -163,6 +164,7 @@ export default function BatchActionModal({ selectedDocs, currentUserName, depart
 
     const [originData, setOriginData] = useState<Record<string, { office: string, creator: string }>>({});
     const [isLoadingOrigins, setIsLoadingOrigins] = useState(false);
+    const [currentUserDept, setCurrentUserDept] = useState<string>(''); 
 
     const canProcessBatch = useMemo(() => selectedDocs.every((doc) => doc.assigned_clerk === currentUserName), [selectedDocs, currentUserName]);
     const isPendingHandshakeBatch = useMemo(() => selectedDocs.length > 0 && selectedDocs.every((doc) => doc.status === 'pending_receipt'), [selectedDocs]);
@@ -176,7 +178,18 @@ export default function BatchActionModal({ selectedDocs, currentUserName, depart
     };
 
     useEffect(() => {
-        // Fetch origin data for reject, batch_decline, AND reassign
+        const fetchDept = async () => {
+            if (currentUserName) {
+                const { data } = await supabase.from('employees').select('department').eq('name', currentUserName).single();
+                if (data?.department) {
+                    setCurrentUserDept(data.department);
+                }
+            }
+        };
+        fetchDept();
+    }, [currentUserName]);
+
+    useEffect(() => {
         if ((activeAction === 'reject' || activeAction === 'batch_decline' || activeAction === 'reassign') && selectedDocs.length > 0) {
             setIsLoadingOrigins(true);
             const fetchOrigins = async () => {
@@ -287,17 +300,15 @@ export default function BatchActionModal({ selectedDocs, currentUserName, depart
                 if (!uploadError) sharedAttachmentUrl = supabase.storage.from('attachments').getPublicUrl(fileName).data.publicUrl;
             }
 
-            let currentUserDept = 'Processing';
-            if (activeAction === 'batch_receive') {
-                const { data: empData } = await supabase.from('employees').select('department').eq('name', currentUserName).single();
-                if (empData?.department) currentUserDept = empData.department;
+            let deptForReceive = 'Processing';
+            if (activeAction === 'batch_receive' && currentUserDept) {
+                deptForReceive = currentUserDept;
             }
 
             const promises = selectedDocs.map(async (doc: DocumentItem) => {
                 
-                // --- BATCH RECEIVE VIA RPC ---
                 if (activeAction === 'batch_receive') {
-                    const newLocation = currentUserDept || doc.current_location;
+                    const newLocation = deptForReceive || doc.current_location;
                     const { error: rpcError } = await supabase.rpc('process_document_action', {
                         p_doc_id: doc.id,
                         p_log_action: 'Document Received',
@@ -310,7 +321,6 @@ export default function BatchActionModal({ selectedDocs, currentUserName, depart
                     });
                     if (rpcError) throw rpcError;
 
-                // --- BATCH DECLINE VIA RPC ---
                 } else if (activeAction === 'batch_decline') {
                     const originInfo = originData[doc.id] || { office: 'Originating Office', creator: 'Creator / Sender' };
                     const { error: rpcError } = await supabase.rpc('process_document_action', {
@@ -327,7 +337,6 @@ export default function BatchActionModal({ selectedDocs, currentUserName, depart
                     });
                     if (rpcError) throw rpcError;
 
-                // --- EXISTING ACTIONS ---
                 } else if (activeAction === 'complete') {
                     const fateString = retentionFate === 'originator' ? 'Returned to Originator' : 'Retained at Final Destination';
                     const detailedRemarks = `Released By: ${releasedBy.trim()}\nDocument Retention: ${fateString}${remarks ? `\nRemarks: ${remarks.trim()}` : ''}`;
@@ -359,18 +368,14 @@ export default function BatchActionModal({ selectedDocs, currentUserName, depart
                     });
                     if (rpcError) throw rpcError;
 
-                // --- UPDATED REASSIGN WITH CREATOR BYPASS LOGIC ---
                 } else if (activeAction === 'reassign') {
                     const prevClerk = doc.assigned_clerk || 'Unassigned';
                     
-                    // Check if we are reassigning back to the creator
                     const originInfo = originData[doc.id];
                     const isReturningToCreator = originInfo && selectedColleague === originInfo.creator;
                     
-                    // If returning to creator, skip handshake and go straight to routing
                     const nextStatus = isReturningToCreator ? 'routing' : 'pending_receipt';
                     
-                    // Force the status update safely 
                     const { error: updateError } = await supabase
                         .from('documents')
                         .update({ 
@@ -385,7 +390,7 @@ export default function BatchActionModal({ selectedDocs, currentUserName, depart
                         p_doc_id: doc.id, p_log_action: 'REASSIGNED', p_log_location: doc.current_location || 'Processing',
                         p_log_created_by: user.id, p_log_remarks: `Batch re-assigned from ${prevClerk} to ${selectedColleague} by ${currentUserName}`,
                         p_new_clerk: selectedColleague,
-                        p_new_status: nextStatus // <-- Adds pending_receipt to the RPC
+                        p_new_status: nextStatus 
                     });
                     if (rpcError) throw rpcError;
                 }
@@ -507,7 +512,7 @@ export default function BatchActionModal({ selectedDocs, currentUserName, depart
 
     return (
         <div className={`fixed inset-0 z-[1050] flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/70 backdrop-blur-sm ${isClosing ? 'animate-out fade-out duration-200 fill-mode-forwards' : 'animate-in fade-in duration-200'}`}>
-            <div className={`bg-white w-full max-w-xl max-h-[92vh] sm:max-h-[90vh] flex flex-col overflow-hidden shadow-2xl rounded-t-[1.5rem] sm:rounded-3xl ${isClosing ? 'animate-out slide-out-to-bottom-[100%] sm:slide-out-to-bottom-0 sm:zoom-out-95 duration-200 fill-mode-forwards' : 'animate-in slide-in-from-bottom-[100%] sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-300'}`}>
+            <div className={`bg-white w-full max-w-xl max-h-[92vh] sm:max-h-[90vh] flex flex-col overflow-hidden shadow-2xl rounded-t-[1.5rem] sm:rounded-3xl transition-all duration-300 ease-in-out ${isClosing ? 'animate-out slide-out-to-bottom-[100%] sm:slide-out-to-bottom-0 sm:zoom-out-95 duration-200 fill-mode-forwards' : 'animate-in slide-in-from-bottom-[100%] sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-300'}`}>
                 
                 <div className={`text-white relative flex flex-col shrink-0 transition-colors duration-300 ${headerColorClass}`}>
                     <div className="w-16 h-1.5 bg-white/30 rounded-full mx-auto mt-3 sm:hidden shrink-0"></div>
@@ -611,15 +616,11 @@ export default function BatchActionModal({ selectedDocs, currentUserName, depart
                         
                         {activeAction === 'reassign' && (
                             <div className="relative z-20">
-                                <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Select Colleague *</label>
-                                <CustomSelect 
-                                    options={colleagues} 
+                                <EmployeeSelect 
                                     value={selectedColleague} 
-                                    onChange={(val: string) => setSelectedColleague(val)} 
-                                    placeholder="Choose an employee..." 
-                                    emptyText="No employee found" 
+                                    onChange={setSelectedColleague}
+                                    departmentFilter={currentUserDept} 
                                     isRelative={true} 
-                                    itemType="option"
                                 />
                             </div>
                         )}

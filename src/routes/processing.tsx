@@ -340,7 +340,6 @@ export default function Processing() {
             selectedDocs={selectedDocs} 
             currentUserName={data?.currentUserName || ''} 
             departments={departments} 
-            colleagues={availableColleagues} 
             onClose={handleToggleBatchMenu} 
             onSuccess={() => { 
                 handleToggleBatchMenu(); 

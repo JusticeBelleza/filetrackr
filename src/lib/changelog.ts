@@ -13,6 +13,33 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
     {
+        version: "1.2.1",
+        date: "September 13, 2026",
+        tagline: "Lazy-Loading Searchable Dropdowns & UI Polish",
+        features: [
+            { 
+                icon: "⚡", 
+                title: "Optimized Custom Selects", 
+                desc: "Replaced rigid HTML dropdowns across routing modals with smooth, infinitely scrolling custom select components for Categories, Offices, and Employees." 
+            },
+            { 
+                icon: "🆔", 
+                title: "Employee ID Search Support", 
+                desc: "Upgraded the internal clerk search engine to dynamically filter by both employee name and exact ID numbers simultaneously." 
+            },
+            { 
+                icon: "📐", 
+                title: "Refined Relative Expansion", 
+                desc: "Configured modal dropdowns with clean relative expansion sizing (~5 items max with integrated scrollbars) to prevent overflow clipping." 
+            },
+            { 
+                icon: "🎨", 
+                title: "Consistent Visual Borders", 
+                desc: "Standardized distinct high-contrast borders and clean search headers across all selector elements for a uniform professional look." 
+            }
+        ]
+    },
+    {
         version: "1.2.0",
         date: "September 12, 2026",
         tagline: "Smart Daily Overview & Turnaround SLA Monitoring",
