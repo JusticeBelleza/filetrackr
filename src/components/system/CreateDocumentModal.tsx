@@ -42,6 +42,8 @@ export default function CreateDocumentModal() {
     // Document Scanner State
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     
+    // --- ADDED: Store current user's name to check for self-assignment ---
+    const [currentUserName, setCurrentUserName] = useState<string>("");
     const [currentUserDept, setCurrentUserDept] = useState<string>("");
 
     const [attachment, setAttachment] = useState<File | Blob | null>(null);
@@ -63,6 +65,9 @@ export default function CreateDocumentModal() {
             if (session) {
                 const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', session.user.id).single();
                 if (profile?.full_name) {
+                    // --- FIXED: Store the user's name for comparison ---
+                    setCurrentUserName(profile.full_name);
+                    
                     const { data: empData } = await supabase.from('employees').select('department').eq('name', profile.full_name).single();
                     if (empData) {
                         setCurrentUserDept(empData.department);
@@ -126,7 +131,11 @@ export default function CreateDocumentModal() {
                 attachmentUrl = data.publicUrl;
             }
 
-            const initialStatus = formData.assignedClerk ? 'pending_receipt' : 'routing';
+            // --- FIXED: Smart Bypass! Skip handshake if assigning to self ---
+            let initialStatus = 'routing';
+            if (formData.assignedClerk && formData.assignedClerk !== currentUserName) {
+                initialStatus = 'pending_receipt';
+            }
 
             const { data: newDoc, error } = await supabase.from('documents').insert([{
                 reference_no: formData.trackingNumber,
