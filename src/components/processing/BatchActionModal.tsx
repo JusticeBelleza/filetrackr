@@ -3,7 +3,7 @@ import { MapPin, CheckCircle, Ban, UserPlus, ArrowLeft, X, PenTool, Camera, Chec
 import { toast } from 'sonner';
 import { supabase } from '../../lib/supabase';
 import { convertImageToScannedPDF } from '../../lib/utils';
-import type { DocumentItem, OptionType } from '../../types/processing';
+import type { DocumentItem } from '../../types/processing';
 import SignaturePad, { type SignaturePadRef } from '../ui/SignaturePad';
 import EmployeeSelect from '../ui/EmployeeSelect'; 
 import DepartmentSelect from '../ui/DepartmentSelect'; 
@@ -12,7 +12,7 @@ import DepartmentSelect from '../ui/DepartmentSelect';
 interface BatchModalProps {
     selectedDocs: DocumentItem[]; 
     currentUserName: string; 
-    departments: OptionType[]; // Kept to prevent parent component from breaking
+    // departments prop completely removed as it is no longer used internally!
     onClose: () => void; 
     onSuccess: () => void;
     onClearSelection?: () => void;

@@ -10,9 +10,6 @@ import SignaturePad, { type SignaturePadRef } from '../ui/SignaturePad';
 import DepartmentSelect from '../ui/DepartmentSelect';
 
 // --- TypeScript Interfaces ---
-interface SelectOption { label: string; value: string; }
-type OptionType = SelectOption | string;
-
 interface DocumentItem {
     id: string; reference_no?: string; title?: string; subject?: string;
     is_urgent?: boolean; current_location?: string; final_destination?: string; created_by?: string; 
@@ -20,7 +17,7 @@ interface DocumentItem {
 
 interface HandoverScreenProps {
     doc: DocumentItem; 
-    departments: OptionType[]; // Kept so the parent component doesn't break, even though DepartmentSelect handles itself
+    // FIXED: departments prop completely removed as it is no longer used internally!
     onBack: () => void; 
     onSuccess: () => void;
 }

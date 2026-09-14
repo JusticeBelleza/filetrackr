@@ -468,7 +468,14 @@ export default function Settings() {
 }
 
 // --- HELPER COMPONENT FOR PROFILE DETAILS ---
-function ProfileField({ icon, value, isMono }: any) {
+// FIXED: Replaced 'any' with explicit interface
+interface ProfileFieldProps {
+    icon: React.ReactNode;
+    value: string;
+    isMono?: boolean;
+}
+
+function ProfileField({ icon, value, isMono }: ProfileFieldProps) {
     return (
         <div className="flex items-center gap-4 py-1.5">
             <div className="text-slate-400 flex justify-center shrink-0 w-5">
@@ -482,7 +489,16 @@ function ProfileField({ icon, value, isMono }: any) {
 }
 
 // --- COLLAPSIBLE MENU GROUP ---
-function CollapsibleGroup({ title, icon, children, defaultOpen = false, hasUpdate = false }: any) {
+// FIXED: Replaced 'any' with explicit interface
+interface CollapsibleGroupProps {
+    title: string;
+    icon: React.ReactNode;
+    children: React.ReactNode;
+    defaultOpen?: boolean;
+    hasUpdate?: boolean;
+}
+
+function CollapsibleGroup({ title, icon, children, defaultOpen = false, hasUpdate = false }: CollapsibleGroupProps) {
     const [isOpen, setIsOpen] = useState(defaultOpen);
     
     return (

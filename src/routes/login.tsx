@@ -162,14 +162,16 @@ export default function Login() {
           // Send to interceptor instead of navigating directly
           await checkLegalAndNavigate(data.user.id);
       }
-    } catch (err: any) {
-      console.error("Biometric Login Error:", err);
+    } catch (err: unknown) {
+      // --- FIXED: Replaced any with unknown and safely cast ---
+      const errorObj = err instanceof Error ? err : new Error(String(err));
+      console.error("Biometric Login Error:", errorObj);
       
       // Always reset the Cloudflare token so the next attempt works
       setTurnstileToken(null);
       turnstileRef.current?.reset();
 
-      const errorMsg = err?.message || err?.toString() || "";
+      const errorMsg = errorObj.message || "An unknown error occurred.";
       
       // 1. Check if the error is just a stale Cloudflare security token
       if (errorMsg.toLowerCase().includes("captcha") || errorMsg.toLowerCase().includes("token")) {
@@ -209,7 +211,7 @@ export default function Login() {
       } else {
         navigate('/dashboard', { replace: true });
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(err);
       toast.error("Failed to save your acknowledgement. Please try again.");
     } finally {

@@ -64,11 +64,14 @@ export default function AppUpdateModal({ currentVersion, onClose }: { currentVer
                         setErrorMessage('Updates are not supported in this browser.');
                     }
                 }
-            } catch (err: any) {
-                console.error("Update check failed:", err);
+            } catch (err: unknown) {
+                // --- FIXED: Replaced "any" with "unknown" and safely extracted error ---
+                const errorObj = err instanceof Error ? err : new Error(String(err));
+                console.error("Update check failed:", errorObj);
+                
                 if (isMounted) {
                     // Fallback catch for the MIME type error just in case
-                    if (err.message && err.message.includes('MIME type')) {
+                    if (errorObj.message && errorObj.message.includes('MIME type')) {
                         setStatus('dev-mode');
                     } else {
                         setStatus('error');

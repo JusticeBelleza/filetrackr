@@ -14,9 +14,29 @@ export interface ReleaseNote {
 export const CHANGELOG: ReleaseNote[] = [
     {
         version: "1.2.0",
-        date: "September 13, 2026",
-        tagline: "Lazy-Loading Searchable Dropdowns & UI Polish",
+        date: "September 14, 2026",
+        tagline: "Strict Type Safety & UI Polish",
         features: [
+            { 
+                icon: "🎨", 
+                title: "Minimalist Document Cards", 
+                desc: "Redesigned the document card layout by moving the aging clock above the document number and replacing bulky text with clean, icon-only status badges." 
+            },
+            { 
+                icon: "📖", 
+                title: "Status Icon Legend", 
+                desc: "Added a quick-reference visual legend above the Active Routing list to help users instantly identify Pending, Received, and Rush documents." 
+            },
+            { 
+                icon: "🛡️", 
+                title: "Strict Type Safety Audit", 
+                desc: "Performed a system-wide codebase audit to enforce strict TypeScript typing, completely eliminating generic 'any' types across settings and dashboard modules." 
+            },
+            { 
+                icon: "⚙️", 
+                title: "React Hook Optimization", 
+                desc: "Resolved exhaustive dependency warnings and safely memoized the lazy-loading queries for internal dropdowns to prevent unnecessary memory leaks." 
+            },
             { 
                 icon: "⚡", 
                 title: "Optimized Custom Selects", 
@@ -41,11 +61,6 @@ export const CHANGELOG: ReleaseNote[] = [
                 icon: "⚠️", 
                 title: "Mixed Batch Validation", 
                 desc: "Added intelligent validation to the batch processing modal that automatically detects and blocks users from mixing 'Pending' and 'Received' documents." 
-            },
-            { 
-                icon: "🏷️", 
-                title: "Unreceived Status Badge", 
-                desc: "Added an eye-catching amber 'Pending' badge directly to the document cards to visually remind users to execute the digital handshake." 
             },
             { 
                 icon: "🔠", 

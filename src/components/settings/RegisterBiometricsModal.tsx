@@ -33,10 +33,12 @@ export default function RegisterBiometricsModal({ onClose }: { onClose: () => vo
                 toast.success("Device registered successfully!");
             }, 2000);
             
-        } catch (err: any) {
-            console.error("Biometric registration failed:", err);
+        } catch (err: unknown) {
+            // --- FIXED: Replaced "any" with "unknown" and safely extracted error message ---
+            const errorObj = err instanceof Error ? err : new Error(String(err));
+            console.error("Biometric registration failed:", errorObj);
             setStep('error');
-            setErrorMessage(err.message || 'Registration was cancelled or failed.');
+            setErrorMessage(errorObj.message || 'Registration was cancelled or failed.');
         }
     };
 

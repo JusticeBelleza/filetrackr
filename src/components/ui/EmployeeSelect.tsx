@@ -29,7 +29,8 @@ export default function EmployeeSelect({ value, onChange, departmentFilter, isRe
     const dropdownRef = useRef<HTMLDivElement>(null);
     const observer = useRef<IntersectionObserver | null>(null);
 
-    const fetchEmployees = async (currentPage: number, search: string, isNewSearch: boolean = false) => {
+    // --- FIX: Wrapped fetchEmployees in useCallback ---
+    const fetchEmployees = useCallback(async (currentPage: number, search: string, isNewSearch: boolean = false) => {
         try {
             setIsLoading(true);
             const from = currentPage * ITEMS_PER_PAGE;
@@ -64,7 +65,7 @@ export default function EmployeeSelect({ value, onChange, departmentFilter, isRe
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [departmentFilter]); // Added departmentFilter as dependency
 
     useEffect(() => {
         const delayDebounceFn = setTimeout(() => {
@@ -74,7 +75,7 @@ export default function EmployeeSelect({ value, onChange, departmentFilter, isRe
         }, 300); 
 
         return () => clearTimeout(delayDebounceFn);
-    }, [searchTerm, departmentFilter]);
+    }, [searchTerm, departmentFilter, fetchEmployees]); // --- FIX: Added fetchEmployees to dependencies ---
 
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
@@ -101,7 +102,7 @@ export default function EmployeeSelect({ value, onChange, departmentFilter, isRe
         });
         
         if (node) observer.current.observe(node);
-    }, [isLoading, hasMore, searchTerm]);
+    }, [isLoading, hasMore, searchTerm, fetchEmployees]); // --- FIX: Added fetchEmployees to dependencies ---
 
     useEffect(() => {
         if (!isOpen) setSearchTerm('');

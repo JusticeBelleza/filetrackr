@@ -3,9 +3,18 @@ import { X, Fingerprint, Trash2, Smartphone, Loader2, ShieldCheck, AlertCircle }
 import { supabase } from '../../lib/supabase';
 import { toast } from 'sonner';
 
+// --- FIXED: Define an interface instead of using 'any' ---
+interface PasskeyItem {
+    id: string;
+    friendly_name?: string;
+    created_at: string;
+    [key: string]: unknown;
+}
+
 export default function BiometricManagerModal({ onClose }: { onClose: () => void }) {
     const [isClosing, setIsClosing] = useState(false);
-    const [passkeys, setPasskeys] = useState<any[]>([]);
+    // --- FIXED: Use the interface instead of 'any[]' ---
+    const [passkeys, setPasskeys] = useState<PasskeyItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isProcessingId, setIsProcessingId] = useState<string | null>(null);
 
@@ -24,8 +33,9 @@ export default function BiometricManagerModal({ onClose }: { onClose: () => void
                 const { data, error } = await supabase.auth.passkey.list();
                 if (error) throw error;
                 
-                setPasskeys(data || []);
-            } catch (err) {
+                // --- FIXED: Safely cast the data to our interface ---
+                setPasskeys((data as PasskeyItem[]) || []);
+            } catch (err: unknown) {
                 console.error("Failed to load biometrics", err);
                 toast.error("Could not load registered devices.");
             } finally {
@@ -62,7 +72,7 @@ export default function BiometricManagerModal({ onClose }: { onClose: () => void
             setPasskeys(prev => prev.filter(p => p.id !== passkeyToDelete));
             toast.success("Device removed successfully.");
             setPasskeyToDelete(null); // Close confirmation modal immediately on success
-        } catch (err) {
+        } catch (err: unknown) {
             console.error("Failed to remove device", err);
             toast.error("Failed to remove device.");
             handleCancelConfirm(); // Animate close if it fails

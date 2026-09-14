@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, X, Activity, CornerUpLeft, RefreshCw, CheckCircle, MapPin, Layers, Ban } from 'lucide-react';
+import { Search, X, Activity, CornerUpLeft, RefreshCw, CheckCircle, MapPin, Layers, Ban, AlertCircle, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '../lib/supabase';
 import type { ProcessingData, DocumentItem } from '../types/processing';
@@ -202,7 +202,7 @@ export default function Processing() {
         </div>
       </div>
 
-      <div className="flex flex-col gap-4 mb-8">
+      <div className="flex flex-col gap-4 mb-6">
           <div className="flex items-center gap-3 w-full">
               <div className="relative flex-1">
                   <Search className="absolute left-3.5 sm:left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4 sm:w-5 sm:h-5" />
@@ -239,6 +239,31 @@ export default function Processing() {
       </div>
 
       <div key={activeTab} className="animate-in fade-in zoom-in-[0.97] duration-300 ease-out fill-mode-both">
+          
+          {/* --- ICON LEGEND --- */}
+          {activeTab === 'processing' && (
+              <div className="flex items-center justify-center sm:justify-start gap-4 mb-5 px-2">
+                  <div className="flex items-center gap-1.5">
+                      <div className="w-[18px] h-[18px] flex items-center justify-center bg-amber-50 text-amber-600 border border-amber-200 rounded-[4px] shadow-sm">
+                          <AlertCircle size={11} strokeWidth={2.5}/>
+                      </div>
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Pending</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                      <div className="w-[18px] h-[18px] flex items-center justify-center bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-[4px] shadow-sm">
+                          <CheckCircle size={11} strokeWidth={2.5}/>
+                      </div>
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Received</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                      <div className="w-[18px] h-[18px] flex items-center justify-center bg-rose-50 text-rose-600 border border-rose-200 rounded-[4px] shadow-sm">
+                          <Zap size={11} strokeWidth={2.5}/>
+                      </div>
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Rush</span>
+                  </div>
+              </div>
+          )}
+
           {filteredDocs.length === 0 && (
               <div className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-10 flex flex-col items-center justify-center text-center">
                   <div className="bg-white p-4 border-2 border-slate-100 rounded-xl mb-4 shadow-sm">
@@ -253,8 +278,8 @@ export default function Processing() {
               <div className="space-y-12">
                   {nestedProcessingGroups.map(({ destination, clerks }) => (
                       <div key={destination} className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                          <div className="flex items-center gap-3 mb-4 mt-6">
-                              <div className="flex items-center gap-1.5 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
+                          <div className="flex items-center gap-3 mb-4 mt-2">
+                              <div className="flex items-center gap-1.5 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 shadow-sm">
                                   <MapPin size={12} className="text-teal-600" />
                                   <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">{destination}</span>
                               </div>
@@ -339,7 +364,6 @@ export default function Processing() {
           <BatchActionModal 
             selectedDocs={selectedDocs} 
             currentUserName={data?.currentUserName || ''} 
-            departments={departments} 
             onClose={handleToggleBatchMenu} 
             onSuccess={() => { 
                 handleToggleBatchMenu(); 
@@ -358,7 +382,7 @@ export default function Processing() {
       {cancelDoc && <CancelModal doc={cancelDoc} onClose={() => setCancelDoc(null)} onSuccess={() => refetch()} />}
       {reRouteDoc && <ReRouteModal doc={reRouteDoc} currentUserName={data?.currentUserName || ''} currentUserId={data?.currentUserId || ''} departments={departments} colleagues={availableColleagues} onClose={() => setReRouteDoc(null)} onSuccess={() => refetch()} />}
       
-      {selectedDoc && <HandoverScreen doc={selectedDoc} departments={departments} onBack={() => setSelectedDoc(null)} onSuccess={() => refetch()} />}
+      {selectedDoc && <HandoverScreen doc={selectedDoc} onBack={() => setSelectedDoc(null)} onSuccess={() => refetch()} />}
       {trailDoc && <DigitalTrailModal doc={trailDoc} onBack={() => setTrailDoc(null)} />}
       {previewDocUrl && <FilePreviewModal url={previewDocUrl} onClose={() => setPreviewDocUrl(null)} />}
       
@@ -528,12 +552,10 @@ function DeclineModal({ doc, currentUserName, onClose, onSuccess }: DeclineModal
                 p_log_location: originOffice, 
                 p_log_created_by: user?.id,
                 p_log_assigned_to: creatorName,
-                // --- THIS IS THE UPDATED STRING FORMAT ---
                 p_log_remarks: `Declined by: ${currentUserName}\nReason: ${reason}`,
                 p_new_status: 'routing', 
                 p_new_location: originOffice, 
                 p_new_clerk: creatorName, 
-                // --- THIS IS THE UPDATED STRING FORMAT ---
                 p_new_remarks: `Declined by: ${currentUserName}\nReason: ${reason}`
             });
             

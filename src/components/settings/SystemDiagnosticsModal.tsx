@@ -51,8 +51,9 @@ export default function SystemDiagnosticsModal({ onClose }: { onClose: () => voi
         else if (ua.includes("Mac")) os = "macOS";
         else if (ua.includes("Linux")) os = "Linux";
 
-        // Check if running as installed PWA or in browser tab
-        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || ('standalone' in navigator && (navigator as any).standalone === true);
+        // --- FIXED: Replaced `(navigator as any)` with a strictly typed check ---
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
+                             ('standalone' in navigator && (navigator as { standalone?: boolean }).standalone === true);
 
         return { browser, os, isStandalone };
     };

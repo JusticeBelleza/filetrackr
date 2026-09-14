@@ -54,6 +54,21 @@ interface DocumentItem {
     updated_at: string;
 }
 
+// --- FIXED: Define an interface for the Activity Log ---
+interface ActivityLog {
+    id: string;
+    action: string;
+    remarks?: string | null;
+    created_at: string;
+    documents?: {
+        reference_no?: string;
+        title?: string;
+    } | {
+        reference_no?: string;
+        title?: string;
+    }[];
+}
+
 // --- Time Formatters ---
 function timeAgo(dateParam: string) {
     if (!dateParam) return '';
@@ -391,7 +406,8 @@ export default function Dashboard() {
                   {recentActivity.length === 0 ? (
                       <p className="text-center py-4 text-sm text-slate-500 font-medium">No recent activity detected.</p>
                   ) : (
-                      paginatedActivity.map((log: any) => {
+                      // --- FIXED: Replaced `any` with `ActivityLog` interface ---
+                      paginatedActivity.map((log: ActivityLog) => {
                           const isReassign = log.action === 'REASSIGNED' || log.action === 'ROUTE';
                           const Icon = isReassign ? ArrowRight : CheckCircle2;
                           const colorClass = isReassign ? 'bg-purple-50 text-purple-600' : 'bg-slate-100 text-slate-600';

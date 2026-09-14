@@ -15,7 +15,6 @@ describe('HandoverScreen Component', () => {
     render(
       <HandoverScreen 
         doc={mockDoc} 
-        departments={[{ label: 'Records', value: 'Records' }]} 
         onBack={() => {}} 
         onSuccess={() => {}} 
       />

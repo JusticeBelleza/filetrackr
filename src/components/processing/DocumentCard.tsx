@@ -1,6 +1,5 @@
-// src/components/processing/DocumentCard.tsx
 import { useState, useEffect } from 'react';
-import { AlertCircle, MapPin, Eye, Clock, ChevronRight, User, MessageSquareWarning, CheckSquare, Square, ChevronDown, UserPlus, Ban, Check, X } from 'lucide-react';
+import { AlertCircle, MapPin, Eye, Clock, ChevronRight, User, MessageSquareWarning, CheckSquare, Square, ChevronDown, UserPlus, Ban, Check, CheckCircle, X, Zap } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { formatPHDateTime } from '../../lib/utils';
 import type { DocumentItem } from '../../types/processing';
@@ -75,7 +74,6 @@ export default function DocumentCard({
     const displayTime = `${days.toString().padStart(2, '0')}d:${remainingHrs.toString().padStart(2, '0')}h`;
     
     let agingColorTheme = "bg-slate-100 text-slate-600 border-slate-200"; 
-    // Color thresholds are now based strictly on working hours (72 working hours = 3 business days)
     if (diffHours >= 72) { agingColorTheme = "bg-rose-50 text-rose-700 border-rose-200 animate-pulse"; } 
     else if (diffHours >= 48) { agingColorTheme = "bg-amber-50 text-amber-700 border-amber-200"; }
 
@@ -155,46 +153,56 @@ export default function DocumentCard({
     // ACTIVE ROUTING TAB VIEW
     // ----------------------------------------------------
     return (
-        <div className={`bg-white rounded-2xl border-2 transition-all relative overflow-hidden ${localDoc.is_urgent ? 'border-red-300 shadow-sm hover:border-red-400' : (isSelected ? 'border-blue-500 ring-4 ring-blue-500/10' : 'border-slate-200 hover:border-slate-300')}`}>
+        <div className={`bg-white rounded-2xl border-2 transition-all relative overflow-hidden flex flex-col h-full ${localDoc.is_urgent ? 'border-red-300 shadow-sm hover:border-red-400' : (isSelected ? 'border-blue-500 ring-4 ring-blue-500/10' : 'border-slate-200 hover:border-slate-300')}`}>
             <div className={`absolute top-0 left-0 w-full h-1 ${localDoc.is_urgent ? 'bg-red-600' : (isSelected ? 'bg-blue-500' : 'bg-transparent')}`}></div>
             
-            <div onClick={() => onToggleCollapse(localDoc.id)} className="p-4 flex items-center justify-between gap-3 cursor-pointer select-none hover:bg-slate-50/70 transition-colors">
-                <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                    {showCheckbox && (
-                        <button type="button" onClick={(e) => { e.stopPropagation(); onToggleSelection(localDoc); }} className={`p-1 rounded-lg transition-all border-2 shrink-0 ${isSelected ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-slate-300 border-slate-200 hover:text-slate-500 hover:border-slate-300'}`}>
-                            {isSelected ? <CheckSquare size={16} strokeWidth={2.5} /> : <Square size={16} strokeWidth={2.5} />}
-                        </button>
-                    )}
-                    
-                    <div className="flex flex-col min-w-0 flex-1">
-                        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                            <span className="text-[10px] font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 shrink-0">
-                                {localDoc.reference_no || localDoc.id.substring(0, 8)}
-                            </span>
-                            
-                            {/* --- THE NEW UNRECEIVED WARNING BADGE --- */}
-                            {localDoc.status === 'pending_receipt' && (
-                                <span className="flex items-center gap-0.5 text-[9px] font-black text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 uppercase tracking-wider shrink-0" title="You have not accepted custody of this document yet">
-                                    <AlertCircle size={10} strokeWidth={3}/> Pending
-                                </span>
+            <div onClick={() => onToggleCollapse(localDoc.id)} className="p-4 flex items-start gap-3 cursor-pointer select-none hover:bg-slate-50/70 transition-colors flex-1">
+                
+                {showCheckbox && (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); onToggleSelection(localDoc); }} className={`mt-0.5 p-1 rounded-lg transition-all border-2 shrink-0 ${isSelected ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-slate-300 border-slate-200 hover:text-slate-500 hover:border-slate-300'}`}>
+                        {isSelected ? <CheckSquare size={16} strokeWidth={2.5} /> : <Square size={16} strokeWidth={2.5} />}
+                    </button>
+                )}
+                
+                <div className="flex flex-col min-w-0 flex-1">
+                    {/* --- TOP ROW: TIME (Left) & ICONS (Right) --- */}
+                    <div className="flex items-start justify-between gap-2 mb-2.5">
+                        <div className={`px-1.5 py-0.5 rounded border flex items-center gap-1 shadow-sm shrink-0 ${agingColorTheme}`}>
+                            <Clock size={10} strokeWidth={2.5} />
+                            <span className="text-[10px] font-black tracking-widest font-mono">{displayTime}</span>
+                        </div>
+                        
+                        <div className="flex items-center gap-1.5 shrink-0">
+                            {localDoc.status === 'pending_receipt' ? (
+                                <div className="w-[22px] h-[22px] flex items-center justify-center bg-amber-50 text-amber-600 border border-amber-200 rounded-md shadow-sm" title="Pending Receipt">
+                                    <AlertCircle size={14} strokeWidth={2.5}/>
+                                </div>
+                            ) : (
+                                <div className="w-[22px] h-[22px] flex items-center justify-center bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-md shadow-sm" title="Custody Accepted">
+                                    <CheckCircle size={14} strokeWidth={2.5}/>
+                                </div>
                             )}
 
                             {localDoc.is_urgent && (
-                                <span className="flex items-center gap-0.5 text-[9px] font-black text-red-700 bg-red-50 px-1.5 py-0.5 rounded border border-red-200 uppercase tracking-wider animate-pulse shrink-0">
-                                    <AlertCircle size={10} strokeWidth={3}/> Rush
-                                </span>
+                                <div className="w-[22px] h-[22px] flex items-center justify-center bg-rose-50 text-rose-600 border border-rose-200 rounded-md shadow-sm animate-pulse" title="Rush Document">
+                                    <Zap size={14} strokeWidth={2.5}/>
+                                </div>
                             )}
-
-                            <div className={`ml-auto px-1.5 py-0.5 rounded border flex items-center gap-1 shadow-sm shrink-0 ${agingColorTheme}`}>
-                                <Clock size={10} strokeWidth={2.5} />
-                                <span className="text-[10px] font-black tracking-widest font-mono">{displayTime}</span>
-                            </div>
                         </div>
-                        <h4 className={`font-bold text-slate-900 text-sm sm:text-base leading-snug ${isExpanded ? '' : 'truncate'}`}>{localDoc.title || localDoc.subject}</h4>
+                    </div>
+
+                    {/* --- BOTTOM ROW: DOC ID & TITLE --- */}
+                    <div className="flex flex-col items-start gap-1">
+                        <span className="text-[10px] font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 shrink-0">
+                            {localDoc.reference_no || localDoc.id.substring(0, 8)}
+                        </span>
+                        <h4 className={`font-bold text-slate-900 text-sm sm:text-base leading-snug w-full ${isExpanded ? '' : 'truncate'}`}>
+                            {localDoc.title || localDoc.subject}
+                        </h4>
                     </div>
                 </div>
 
-                <ChevronDown size={18} className={`text-slate-400 shrink-0 transition-transform duration-200 ease-in-out ${isExpanded ? 'rotate-180 text-blue-600' : ''}`} />
+                <ChevronDown size={18} className={`text-slate-400 shrink-0 mt-1 transition-transform duration-200 ease-in-out ${isExpanded ? 'rotate-180 text-blue-600' : ''}`} />
             </div>
             
             <div className={`grid transition-[grid-template-rows,opacity] duration-[400ms] ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
@@ -340,7 +348,6 @@ function MiniRouteTracker({ documentId, documentStatus }: { documentId: string, 
 
         fetchRoute();
 
-        // Optional: Sets up a realtime listener if Realtime is enabled in your Supabase Dashboard
         const subscription = supabase
             .channel(`public:document_logs:${documentId}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'document_logs', filter: `document_id=eq.${documentId}` }, () => {
@@ -381,7 +388,6 @@ function MiniRouteTracker({ documentId, documentStatus }: { documentId: string, 
                     return (
                         <div key={index} className="relative flex flex-col items-center w-24 sm:w-28 shrink-0">
                             
-                            {/* THE PERFECT LINE - Uses calc() to touch the edges of the circles seamlessly */}
                             {index !== nodes.length - 1 && (
                                 <div 
                                     className={`absolute top-[9px] left-[calc(50%+14px)] w-[calc(100%-28px)] h-[2px] rounded-full transition-colors z-0
@@ -390,7 +396,6 @@ function MiniRouteTracker({ documentId, documentStatus }: { documentId: string, 
                                 ></div>
                             )}
                             
-                            {/* THE CIRCLE - Smaller 20px node with beautiful UI drop rings */}
                             <div 
                                 className={`relative z-10 w-5 h-5 rounded-full flex items-center justify-center border-2 transition-all duration-300
                                     ${isRejected 
@@ -410,7 +415,6 @@ function MiniRouteTracker({ documentId, documentStatus }: { documentId: string, 
                                 )}
                             </div>
                             
-                            {/* THE TEXT - Slightly adjusted spacing and crisp typography */}
                             <span 
                                 title={node.location}
                                 className={`mt-2.5 text-[10px] text-center w-full line-clamp-2 leading-[1.3] px-1 transition-colors
