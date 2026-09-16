@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
     Activity, ArrowRight, CheckCircle2, Plus,
-    Sparkles, Clock, AlertTriangle, X
+    Sparkles, Clock, AlertTriangle, X,
+    Building2, Phone, Mail, ChevronDown, Search, MapPin, Users
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { toast } from 'sonner';
@@ -14,7 +15,6 @@ const modalAnimationStyles = `
     @keyframes customFadeIn { from { opacity: 0; } to { opacity: 1; } }
     @keyframes customFadeOut { from { opacity: 1; } to { opacity: 0; } }
     
-    /* Horizontal Sliding Animations for Mobile Modal */
     @keyframes slideInLeft { from { transform: translateX(-100vw); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
     @keyframes slideOutRight { from { transform: translateX(0); opacity: 1; } to { transform: translateX(100vw); opacity: 0; } }
     
@@ -54,7 +54,6 @@ interface DocumentItem {
     updated_at: string;
 }
 
-// --- FIXED: Define an interface for the Activity Log ---
 interface ActivityLog {
     id: string;
     action: string;
@@ -69,7 +68,6 @@ interface ActivityLog {
     }[];
 }
 
-// --- Time Formatters ---
 function timeAgo(dateParam: string) {
     if (!dateParam) return '';
     const date = new Date(dateParam);
@@ -93,7 +91,6 @@ function getGreeting() {
     return 'Good evening';
 }
 
-// --- Smart Briefing Engine ---
 function getSmartBriefing(userName: string, active: number, rush: number, returned: number) {
     const greeting = getGreeting();
     let mainText = "";
@@ -128,6 +125,12 @@ export default function Dashboard() {
   const [activityPage, setActivityPage] = useState(1);
   const ACTIVITY_PER_PAGE = 5;
 
+  // Directory States
+  const [isDirOpen, setIsDirOpen] = useState(false);
+  const [dirSearch, setDirSearch] = useState('');
+  const [dirPage, setDirPage] = useState(1);
+  const DIR_PER_PAGE = 4;
+
   // SLA Modal States
   const [selectedSla, setSelectedSla] = useState<'healthy' | 'warning' | 'critical' | null>(null);
   const [slaModalPage, setSlaModalPage] = useState(1);
@@ -144,7 +147,7 @@ export default function Dashboard() {
   };
 
   // =========================================
-  // 🚀 REACT QUERY: FETCH USER, BRIEFING & SLA DATA
+  // 🚀 REACT QUERY: FETCH USER, BRIEFING & SLA
   // =========================================
   const { data: userData, isLoading } = useQuery({
     queryKey: ['dashboardUserData'],
@@ -177,7 +180,6 @@ export default function Dashboard() {
           if (empData?.department) userDepartment = empData.department;
       }
 
-      // Fetch docs specifically assigned to this user
       const { data: myDocs } = await supabase
           .from('documents')
           .select('id, reference_no, title, category, is_urgent, remarks, status, updated_at, created_at')
@@ -190,7 +192,6 @@ export default function Dashboard() {
       const rushCount = safeDocs.filter(d => d.is_urgent).length;
       const returnedCount = safeDocs.filter(d => !!d.remarks).length;
 
-      // SLA Logic Calculation & Sorting
       const now = new Date();
       const slaDocs: { healthy: DocumentItem[], warning: DocumentItem[], critical: DocumentItem[] } = {
           healthy: [],
@@ -228,7 +229,7 @@ export default function Dashboard() {
   });
 
   // =========================================
-  // 🚀 REACT QUERY: FETCH RECENT ACTIVITY
+  // 🚀 REACT QUERY: RECENT ACTIVITY
   // =========================================
   const currentUserId = userData?.currentUserId;
   const { data: recentActivity = [] } = useQuery({
@@ -249,13 +250,32 @@ export default function Dashboard() {
       enabled: !!currentUserId
   });
 
+  // =========================================
+  // 🚀 REACT QUERY: DEPARTMENTS DIRECTORY
+  // =========================================
+  const { data: departmentsData = [] } = useQuery({
+      queryKey: ['dashboardDepartmentsDirectory'],
+      queryFn: async () => {
+          const { data } = await supabase.from('departments').select('*').order('name');
+          return data || [];
+      }
+  });
+
+  const filteredDepts = departmentsData.filter((dept: any) => 
+      dept.name?.toLowerCase().includes(dirSearch.toLowerCase()) || 
+      dept.office_address?.toLowerCase().includes(dirSearch.toLowerCase()) ||
+      dept.department_head?.toLowerCase().includes(dirSearch.toLowerCase())
+  );
+  
+  const totalDirPages = Math.ceil(filteredDepts.length / DIR_PER_PAGE);
+  const paginatedDepts = filteredDepts.slice((dirPage - 1) * DIR_PER_PAGE, dirPage * DIR_PER_PAGE);
+
   const totalActivityPages = Math.ceil(recentActivity.length / ACTIVITY_PER_PAGE);
   const paginatedActivity = recentActivity.slice(
       (activityPage - 1) * ACTIVITY_PER_PAGE, 
       activityPage * ACTIVITY_PER_PAGE
   );
 
-  // --- Modal Pagination Calculations ---
   const currentSlaDocs = (selectedSla && userData?.sla?.docs[selectedSla]) || [];
   const totalModalPages = Math.ceil(currentSlaDocs.length / SLA_MODAL_PER_PAGE);
   const paginatedModalDocs = currentSlaDocs.slice(
@@ -263,7 +283,6 @@ export default function Dashboard() {
       slaModalPage * SLA_MODAL_PER_PAGE
   );
 
-  // --- Realtime Subscription ---
   useEffect(() => {
       if (!userData?.currentUserName) return;
       const channel = supabase
@@ -284,7 +303,6 @@ export default function Dashboard() {
       );
   }
 
-  // Generate the smart text
   const smartBriefing = getSmartBriefing(
       userData?.userName || 'User',
       userData?.briefing?.activeCount || 0,
@@ -349,7 +367,6 @@ export default function Dashboard() {
               </div>
               
               <div className="p-5 grid grid-cols-3 gap-3 sm:gap-4 flex-1 items-center">
-                  {/* Healthy */}
                   <button 
                       onClick={() => { setSelectedSla('healthy'); setSlaModalPage(1); }}
                       className="bg-emerald-50/50 border-2 border-emerald-100 rounded-xl sm:rounded-2xl py-6 px-2 flex flex-col items-center justify-center text-center transition-all hover:bg-emerald-50 hover:border-emerald-300 active:scale-95 focus:outline-none focus:ring-4 focus:ring-emerald-500/20"
@@ -362,7 +379,6 @@ export default function Dashboard() {
                       <p className="text-[9px] sm:text-[10px] font-medium text-emerald-600/70 mt-0.5 sm:mt-1">&lt; 24 hrs</p>
                   </button>
 
-                  {/* Warning */}
                   <button 
                       onClick={() => { setSelectedSla('warning'); setSlaModalPage(1); }}
                       className="bg-amber-50/50 border-2 border-amber-100 rounded-xl sm:rounded-2xl py-6 px-2 flex flex-col items-center justify-center text-center transition-all hover:bg-amber-50 hover:border-amber-300 active:scale-95 focus:outline-none focus:ring-4 focus:ring-amber-500/20"
@@ -375,7 +391,6 @@ export default function Dashboard() {
                       <p className="text-[9px] sm:text-[10px] font-medium text-amber-600/70 mt-0.5 sm:mt-1">24 - 48 hrs</p>
                   </button>
 
-                  {/* Critical */}
                   <button 
                       onClick={() => { setSelectedSla('critical'); setSlaModalPage(1); }}
                       className="bg-red-50/50 border-2 border-red-100 rounded-xl sm:rounded-2xl py-6 px-2 flex flex-col items-center justify-center text-center transition-all hover:bg-red-50 hover:border-red-300 active:scale-95 focus:outline-none focus:ring-4 focus:ring-red-500/20"
@@ -406,7 +421,6 @@ export default function Dashboard() {
                   {recentActivity.length === 0 ? (
                       <p className="text-center py-4 text-sm text-slate-500 font-medium">No recent activity detected.</p>
                   ) : (
-                      // --- FIXED: Replaced `any` with `ActivityLog` interface ---
                       paginatedActivity.map((log: ActivityLog) => {
                           const isReassign = log.action === 'REASSIGNED' || log.action === 'ROUTE';
                           const Icon = isReassign ? ArrowRight : CheckCircle2;
@@ -436,14 +450,127 @@ export default function Dashboard() {
                   )}
               </div>
 
-              {/* Activity Pagination Controls */}
               {totalActivityPages > 1 && (
                   <div className="p-3 border-t border-slate-100 bg-white flex items-center justify-between shrink-0">
-                      <button onClick={() => setActivityPage(p => Math.max(1, p - 1))} disabled={activityPage === 1} className="px-3 py-1 text-[11px] font-bold uppercase text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 disabled:opacity-50">Prev</button>
+                      <button onClick={() => setActivityPage(p => Math.max(1, p - 1))} disabled={activityPage === 1} className="px-3 py-1 text-[11px] font-bold uppercase text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 disabled:opacity-50 transition-colors">Prev</button>
                       <span className="text-[10px] font-bold uppercase text-slate-400">Page {activityPage} of {totalActivityPages}</span>
-                      <button onClick={() => setActivityPage(p => Math.min(totalActivityPages, p + 1))} disabled={activityPage === totalActivityPages} className="px-3 py-1 text-[11px] font-bold uppercase text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 disabled:opacity-50">Next</button>
+                      <button onClick={() => setActivityPage(p => Math.min(totalActivityPages, p + 1))} disabled={activityPage === totalActivityPages} className="px-3 py-1 text-[11px] font-bold uppercase text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 disabled:opacity-50 transition-colors">Next</button>
                   </div>
               )}
+          </div>
+      </div>
+
+      {/* --- 4. DEPARTMENT DIRECTORY (OFFICES WITH TEXT & ICON-ONLY ACTIONS) --- */}
+      <div className="bg-white border border-slate-200 rounded-[1.5rem] shadow-sm overflow-hidden flex flex-col">
+          <button 
+              onClick={() => setIsDirOpen(!isDirOpen)}
+              className="p-5 bg-slate-50 flex items-center justify-between transition-colors hover:bg-slate-100 active:bg-slate-200 w-full group focus:outline-none"
+          >
+              <div className="flex items-center gap-3.5">
+                  <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform">
+                      <Building2 size={20} strokeWidth={2.5} />
+                  </div>
+                  <div className="text-left">
+                      <h3 className="text-[15px] sm:text-base font-black text-slate-900 leading-tight">Department Directory</h3>
+                      <p className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider mt-0.5">{departmentsData.length} Offices Registered</p>
+                  </div>
+              </div>
+              <div className={`p-2 rounded-full transition-colors ${isDirOpen ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200 text-slate-500'}`}>
+                  <ChevronDown size={20} className={`transition-transform duration-300 ${isDirOpen ? 'rotate-180' : ''}`} />
+              </div>
+          </button>
+
+          <div className={`transition-all duration-300 ease-in-out ${isDirOpen ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}>
+              <div className="p-4 sm:p-5 border-t border-slate-100 space-y-4">
+                  
+                  {/* Search Bar */}
+                  <div className="relative">
+                      <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                      <input 
+                          type="text" 
+                          value={dirSearch}
+                          onChange={(e) => { setDirSearch(e.target.value); setDirPage(1); }}
+                          placeholder="Search offices, address, or head..." 
+                          className="w-full pl-10 pr-4 py-2.5 rounded-xl border-2 border-slate-100 focus:border-indigo-500 outline-none text-sm font-bold text-slate-800 placeholder:text-slate-400 bg-slate-50 focus:bg-white transition-all shadow-sm"
+                      />
+                  </div>
+
+                  {/* Departments List with Pagination */}
+                  <div className="space-y-3">
+                      {paginatedDepts.length === 0 ? (
+                          <p className="text-center py-6 text-sm text-slate-400 font-bold italic border-2 border-dashed border-slate-100 rounded-xl">No offices found.</p>
+                      ) : (
+                          paginatedDepts.map((dept: any) => (
+                              <div key={dept.id} className="border-2 border-slate-200 rounded-2xl p-4 bg-white shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                  
+                                  {/* Department Text Details */}
+                                  <div className="flex flex-col gap-1 flex-1 min-w-0">
+                                      <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest">{dept.office_id || 'OFC-LEGACY'}</span>
+                                      <h4 className="font-black text-slate-900 text-base leading-tight break-words">{dept.name}</h4>
+                                      
+                                      <span className="text-xs font-medium text-slate-600 flex items-start gap-1.5 break-words mt-0.5">
+                                          <MapPin size={13} className="text-slate-400 shrink-0 mt-0.5" />
+                                          {dept.office_address || dept.address || 'No address provided'}
+                                      </span>
+
+                                      {dept.department_head && (
+                                          <span className="text-xs font-medium text-slate-600 flex items-start gap-1.5 break-words">
+                                              <Users size={13} className="text-slate-400 shrink-0 mt-0.5" />
+                                              Head: {dept.department_head}
+                                          </span>
+                                      )}
+                                  </div>
+
+                                  {/* Icon-Only Action Buttons */}
+                                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                                      {dept.contact_number && (
+                                          <a 
+                                              href={`tel:${dept.contact_number}`} 
+                                              className="w-[40px] h-[40px] flex items-center justify-center bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 active:scale-90 transition-all border border-emerald-200 shadow-sm"
+                                              title={`Call: ${dept.contact_number}`}
+                                          >
+                                              <Phone size={18} strokeWidth={2.5} />
+                                          </a>
+                                      )}
+                                      {dept.email_address && (
+                                          <a 
+                                              href={`mailto:${dept.email_address}`} 
+                                              className="w-[40px] h-[40px] flex items-center justify-center bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 active:scale-90 transition-all border border-blue-200 shadow-sm"
+                                              title={`Email: ${dept.email_address}`}
+                                          >
+                                              <Mail size={18} strokeWidth={2.5} />
+                                          </a>
+                                      )}
+                                  </div>
+                              </div>
+                          ))
+                      )}
+                  </div>
+
+                  {/* Pagination Controls */}
+                  {totalDirPages > 1 && (
+                      <div className="flex items-center justify-between pt-3 border-t border-slate-100 px-1">
+                          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Page {dirPage} of {totalDirPages}</span>
+                          <div className="flex gap-2">
+                              <button 
+                                  disabled={dirPage === 1}
+                                  onClick={() => setDirPage(p => Math.max(1, p - 1))}
+                                  className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold disabled:opacity-50 hover:bg-slate-200 active:scale-95 transition-all"
+                              >
+                                  Prev
+                              </button>
+                              <button 
+                                  disabled={dirPage === totalDirPages}
+                                  onClick={() => setDirPage(p => Math.min(totalDirPages, p + 1))}
+                                  className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold disabled:opacity-50 hover:bg-slate-200 active:scale-95 transition-all"
+                              >
+                                  Next
+                              </button>
+                          </div>
+                      </div>
+                  )}
+
+              </div>
           </div>
       </div>
 
@@ -452,7 +579,6 @@ export default function Dashboard() {
           <div className={`fixed inset-0 z-[999] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm ${isClosingSla ? 'animate-overlay-fade-out' : 'animate-overlay-fade'}`}>
               <div className={`bg-white w-full max-w-md flex flex-col shadow-2xl rounded-3xl overflow-hidden ${isClosingSla ? 'animate-responsive-modal-close' : 'animate-responsive-modal'}`}>
                   
-                  {/* Modal Header */}
                   <div className="bg-slate-900 p-5 flex justify-between items-center text-white shrink-0">
                       <h3 className="font-black text-lg flex items-center gap-2">
                           {selectedSla === 'healthy' && <CheckCircle2 size={20} className="text-emerald-400" />}
@@ -460,15 +586,11 @@ export default function Dashboard() {
                           {selectedSla === 'critical' && <AlertTriangle size={20} className="text-red-400" />}
                           <span className="capitalize">{selectedSla} Documents</span>
                       </h3>
-                      <button 
-                          onClick={closeSlaModal} 
-                          className="p-1 hover:bg-white/20 rounded-full transition-colors focus:outline-none"
-                      >
+                      <button onClick={closeSlaModal} className="p-1 hover:bg-white/20 rounded-full transition-colors focus:outline-none">
                           <X size={20} />
                       </button>
                   </div>
                   
-                  {/* Modal Body */}
                   <div className="p-5 max-h-[50vh] overflow-y-auto custom-scrollbar bg-slate-50 flex-1">
                       {currentSlaDocs.length === 0 ? (
                           <div className="text-center text-slate-500 font-medium py-8 px-4">
@@ -479,7 +601,6 @@ export default function Dashboard() {
                           <div className="space-y-3">
                               {paginatedModalDocs.map((doc) => (
                                   <div key={doc.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-blue-300 transition-colors">
-                                      {/* Category & Rush on Top */}
                                       <div className="flex items-center justify-between gap-2 mb-1.5">
                                           {doc.category ? (
                                               <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded tracking-wide">
@@ -492,13 +613,11 @@ export default function Dashboard() {
                                               </span>
                                           )}
                                       </div>
-                                      {/* Document Number / Reference */}
                                       <div className="mb-1">
                                           <span className="text-[11px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded font-mono tracking-wide inline-block">
                                               {doc.reference_no || doc.id}
                                           </span>
                                       </div>
-                                      {/* Document Title */}
                                       <span className="text-[14px] font-bold text-slate-800 leading-tight block">
                                           {doc.title || 'Untitled Document'}
                                       </span>
@@ -508,26 +627,11 @@ export default function Dashboard() {
                       )}
                   </div>
 
-                  {/* Modal Pagination Footer */}
                   {totalModalPages > 1 && (
                       <div className="p-3 bg-white border-t border-slate-100 flex items-center justify-between shrink-0">
-                          <button 
-                              onClick={() => setSlaModalPage(p => Math.max(1, p - 1))} 
-                              disabled={slaModalPage === 1} 
-                              className="px-3 py-1 text-[11px] font-bold uppercase text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 disabled:opacity-50"
-                          >
-                              Prev
-                          </button>
-                          <span className="text-[10px] font-bold uppercase text-slate-400">
-                              Page {slaModalPage} of {totalModalPages}
-                          </span>
-                          <button 
-                              onClick={() => setSlaModalPage(p => Math.min(totalModalPages, p + 1))} 
-                              disabled={slaModalPage === totalModalPages} 
-                              className="px-3 py-1 text-[11px] font-bold uppercase text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 disabled:opacity-50"
-                          >
-                              Next
-                          </button>
+                          <button onClick={() => setSlaModalPage(p => Math.max(1, p - 1))} disabled={slaModalPage === 1} className="px-3 py-1 text-[11px] font-bold uppercase text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 disabled:opacity-50">Prev</button>
+                          <span className="text-[10px] font-bold uppercase text-slate-400">Page {slaModalPage} of {totalModalPages}</span>
+                          <button onClick={() => setSlaModalPage(p => Math.min(totalModalPages, p + 1))} disabled={slaModalPage === totalModalPages} className="px-3 py-1 text-[11px] font-bold uppercase text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 disabled:opacity-50">Next</button>
                       </div>
                   )}
 

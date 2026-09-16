@@ -1,17 +1,16 @@
-// src/routes/history.tsx
 import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { 
     Search, MapPin, Clock, CheckCircle, AlertCircle, 
-    Archive, FileText, X, Eye, Ban, ChevronDown, FolderTree, User, RefreshCw, Database
+    Archive, FileText, X, Eye, Ban, ChevronDown, FolderTree, User, RefreshCw, Database, Link as LinkIcon 
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 import { formatPHDateTime } from '../lib/utils';
 import DigitalTrailModal from '../components/system/DigitalTrailModal';
 import FilePreviewModal from '../components/system/FilePreviewModal';
+import LinkedDocumentsModal from '../components/processing/LinkedDocumentsModal';
 
-// --- Shared Animation Styles ---
 const modalAnimationStyles = `
     @keyframes customFadeIn { from { opacity: 0; } to { opacity: 1; } }
     @keyframes iosSlideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
@@ -28,7 +27,6 @@ const modalAnimationStyles = `
     }
 `;
 
-// --- TypeScript Interfaces ---
 interface DocumentLog {
     action: string;
     created_at: string;
@@ -53,12 +51,14 @@ interface DocumentItem {
     updated_at?: string;
     document_logs?: DocumentLog[];
     action_time?: string; 
+    parent_doc_ref?: string | null; 
+    has_children?: boolean; // <-- NEW
 }
 
 interface HistoryData {
     completed: DocumentItem[];
     cancelled: DocumentItem[];
-    archived: DocumentItem[]; // NEW: Added archived array
+    archived: DocumentItem[]; 
 }
 
 interface TabButtonProps {
@@ -72,14 +72,13 @@ interface TabButtonProps {
     newCount?: number;
 }
 
-// --- DATA FETCHING FUNCTION FOR REACT QUERY ---
 const fetchHistoryData = async (): Promise<HistoryData> => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error("No authenticated session");
     const currentUserId = session.user.id;
 
-    // Fetch active docs, profiles, AND archived docs simultaneously
-    const [docsRes, profilesRes, archivedRes] = await Promise.all([
+    // --- NEW: Added a query for parent_doc_ref to flag Mother Docs ---
+    const [docsRes, profilesRes, archivedRes, parentRefsRes] = await Promise.all([
         supabase.from('documents')
             .select(`
                 *,
@@ -90,11 +89,11 @@ const fetchHistoryData = async (): Promise<HistoryData> => {
             `)
             .in('status', ['sealed', 'cancelled']),
         supabase.from('profiles').select('id, full_name'),
-        supabase.from('archived_documents').select('*') // No nested logs to avoid missing FK errors
+        supabase.from('archived_documents').select('*'),
+        supabase.from('documents').select('parent_doc_ref').not('parent_doc_ref', 'is', null) 
     ]);
 
     if (docsRes.error) throw docsRes.error;
-    // Log archive error but don't crash the whole page if archive table is empty or missing
     if (archivedRes.error) console.error("Archive fetch error:", archivedRes.error); 
 
     const creatorMap: Record<string, string> = {};
@@ -104,6 +103,8 @@ const fetchHistoryData = async (): Promise<HistoryData> => {
         });
     }
 
+    const parentRefSet = new Set(parentRefsRes.data?.map(d => d.parent_doc_ref) || []);
+
     const rawDocs = docsRes.data || [];
     const rawArchived = archivedRes.data || [];
 
@@ -111,7 +112,6 @@ const fetchHistoryData = async (): Promise<HistoryData> => {
     let cancelled: DocumentItem[] = [];
     let archived: DocumentItem[] = [];
 
-    // Process Active Documents
     if (rawDocs.length > 0) {
         const myRelevantDocs = (rawDocs as DocumentItem[]).filter((d) => 
             d.created_by === currentUserId
@@ -120,6 +120,7 @@ const fetchHistoryData = async (): Promise<HistoryData> => {
         const processedDocs = myRelevantDocs.map((doc) => {
             const logs = doc.document_logs || [];
             doc.creator_name = creatorMap[doc.created_by || ''] || 'System User';
+            doc.has_children = parentRefSet.has(doc.reference_no); // <-- Flags Mother Docs
 
             if (doc.status === 'sealed') {
                 const deliveryLog = logs.filter((l) => l.action === 'Delivered')
@@ -142,7 +143,6 @@ const fetchHistoryData = async (): Promise<HistoryData> => {
           .sort((a, b) => new Date(b.action_time || '').getTime() - new Date(a.action_time || '').getTime());
     }
 
-    // Process Archived Documents
     if (rawArchived.length > 0) {
         const myArchivedDocs = (rawArchived as DocumentItem[]).filter((d) => 
             d.created_by === currentUserId
@@ -150,8 +150,8 @@ const fetchHistoryData = async (): Promise<HistoryData> => {
 
         archived = myArchivedDocs.map((doc) => {
             doc.creator_name = creatorMap[doc.created_by || ''] || 'System User';
-            // Fallback to updated_at since we don't join the heavy logs table for deep storage
             doc.action_time = doc.updated_at || doc.created_at; 
+            doc.has_children = parentRefSet.has(doc.reference_no); // <-- Flags Mother Docs
             return doc;
         }).sort((a, b) => new Date(b.action_time || '').getTime() - new Date(a.action_time || '').getTime());
     }
@@ -166,7 +166,9 @@ export default function History() {
   const [trailDoc, setTrailDoc] = useState<DocumentItem | null>(null);
   const [previewDocUrl, setPreviewDocUrl] = useState<string | null>(null);
 
-  // --- Accordion, Pagination & View State ---
+  const [linkedTargetRef, setLinkedTargetRef] = useState<string | null>(null);
+  const [isLinkedModalOpen, setIsLinkedModalOpen] = useState(false);
+
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   const [categoryPages, setCategoryPages] = useState<Record<string, number>>({});
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
@@ -176,7 +178,6 @@ export default function History() {
       return saved ? JSON.parse(saved) : {};
   });
 
-  // --- UPGRADED: Added refetchOnMount and refetchOnWindowFocus ---
   const { data, isLoading, refetch, isFetching } = useQuery<HistoryData>({
       queryKey: ['historyDocuments'],
       queryFn: fetchHistoryData,
@@ -185,7 +186,6 @@ export default function History() {
       refetchOnWindowFocus: true,
   });
 
-  // --- UPGRADED: Direct Realtime refetching for both Active and Archived Docs ---
   useEffect(() => {
       const docsChannel = supabase
         .channel('history-document-updates')
@@ -193,7 +193,7 @@ export default function History() {
           'postgres_changes',
           { event: '*', schema: 'public', table: 'documents' },
           () => {
-            refetch(); // Instantly pulls fresh data
+            refetch(); 
             queryClient.invalidateQueries({ queryKey: ['globalNavNotifications'] });
           }
         )
@@ -205,7 +205,7 @@ export default function History() {
           'postgres_changes',
           { event: '*', schema: 'public', table: 'archived_documents' },
           () => {
-            refetch(); // Instantly pulls fresh data for deep archives
+            refetch(); 
           }
         )
         .subscribe();
@@ -224,7 +224,6 @@ export default function History() {
       };
   }, [data]);
 
-  // --- CALCULATE TAB BADGES ---
   const newCompletedCount = useMemo(() => {
       let count = 0;
       documents.completed.forEach(doc => {
@@ -249,7 +248,6 @@ export default function History() {
       return count;
   }, [documents.cancelled, tabCategoryViewedTime]);
 
-  // NEW: Calculate Archived Badges
   const newArchivedCount = useMemo(() => {
       let count = 0;
       documents.archived.forEach(doc => {
@@ -402,7 +400,6 @@ export default function History() {
                 colorClass="bg-rose-600 text-white"
                 badgeClass="bg-rose-500 text-white border-rose-400"
               />
-              {/* NEW: Archive Tab */}
               <TabButton 
                 label="Deep Archive" 
                 icon={<Database size={18} strokeWidth={activeTab === 'archived' ? 3 : 2} />}
@@ -438,7 +435,6 @@ export default function History() {
                       const totalPages = Math.ceil(docs.length / itemsPerPage);
                       const paginatedDocs = docs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-                      // Dynamic styling based on the active tab
                       let tabThemeColor = 'emerald';
                       let tabIconColor = 'text-emerald-500';
                       if (activeTab === 'cancelled') {
@@ -451,7 +447,6 @@ export default function History() {
 
                       return (
                           <div key={category} className={`bg-white border rounded-[1.5rem] overflow-hidden transition-all duration-300 shadow-sm ${isCategoryExpanded ? 'border-slate-300 shadow-md ring-4 ring-slate-50/50' : 'border-slate-200 hover:border-slate-300'}`}>
-                              {/* FOLDER HEADER */}
                               <button 
                                   onClick={() => toggleCategoryAccordion(category)}
                                   className={`w-full py-4 px-5 flex items-center justify-between transition-colors duration-200 ease-in-out focus:outline-none group active:bg-slate-50 ${isCategoryExpanded ? 'bg-slate-50/80 border-b border-slate-100' : 'bg-transparent hover:bg-slate-50/50'}`}
@@ -466,7 +461,6 @@ export default function History() {
                                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-md text-slate-500 bg-white border border-slate-200 shadow-sm">
                                               {docs.length} document{docs.length !== 1 ? 's' : ''}
                                           </span>
-                                          {/* --- THE NEW FOLDER NOTIFICATION BADGE --- */}
                                           {newCount > 0 && !isCategoryExpanded && (
                                               <span className="text-[9px] font-black text-white bg-red-500 px-1.5 py-0.5 rounded shadow-sm animate-pulse flex items-center tracking-wider">
                                                   {newCount} NEW
@@ -483,7 +477,6 @@ export default function History() {
                                   </div>
                               </button>
 
-                              {/* COLLAPSIBLE CARDS CONTENT */}
                               <div className={`grid transition-[grid-template-rows,opacity] duration-[400ms] ease-in-out ${isCategoryExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
                                   <div className="overflow-hidden">
                                       <div className="bg-slate-50/50 p-4 sm:p-5">
@@ -493,10 +486,8 @@ export default function History() {
 
                                                   return (
                                                       <div key={doc.id} className="group relative bg-white rounded-2xl border border-slate-200 hover:border-slate-300 transition-all overflow-hidden shadow-sm hover:shadow-md">
-                                                          {/* Ticket-style colored left border */}
                                                           <div className={`absolute top-0 left-0 bottom-0 w-1.5 bg-${tabThemeColor}-500 transition-colors`}></div>
 
-                                                          {/* CARD HEADER */}
                                                           <div 
                                                               onClick={() => toggleCardCollapse(doc.id)}
                                                               className="p-4 pl-6 flex items-center justify-between gap-3 cursor-pointer select-none hover:bg-slate-50/70 transition-colors"
@@ -512,12 +503,10 @@ export default function History() {
                                                                           </span>
                                                                       </div>
                                                                       
-                                                                      {/* CONDITIONAL TRUNCATION */}
                                                                       <h4 className={`font-bold text-slate-900 text-sm sm:text-base leading-snug ${isCardExpanded ? '' : 'truncate'}`}>
                                                                           {doc.title || doc.subject}
                                                                       </h4>
                                                                       
-                                                                      {/* DATE/TIME BELOW TITLE */}
                                                                       <div className="flex items-center gap-1.5 mt-1.5 shrink-0 text-slate-400">
                                                                           <Clock size={12} strokeWidth={2.5} />
                                                                           <span className="text-[10px] font-bold tracking-wide font-mono whitespace-nowrap">
@@ -527,13 +516,28 @@ export default function History() {
                                                                   </div>
                                                               </div>
 
-                                                              <ChevronDown 
-                                                                  size={20} 
-                                                                  className={`text-slate-400 shrink-0 transition-transform duration-200 ease-in-out ${isCardExpanded ? `rotate-180 text-${tabThemeColor}-600` : ''}`} 
-                                                              />
+                                                              {/* --- NEW: LINK BADGE BESIDE CHEVRON --- */}
+                                                              <div className="flex items-center gap-2 shrink-0">
+                                                                {(doc.parent_doc_ref || doc.has_children) && (
+                                                                    <button 
+                                                                        onClick={(e) => { 
+                                                                            e.stopPropagation(); 
+                                                                            setLinkedTargetRef((doc.parent_doc_ref || doc.reference_no) as string);
+                                                                            setIsLinkedModalOpen(true);
+                                                                        }} 
+                                                                        className="w-[26px] h-[26px] flex items-center justify-center bg-blue-50 text-blue-600 border border-blue-200 rounded-md shadow-sm hover:bg-blue-100 transition-colors shrink-0" 
+                                                                        title="View Document Family"
+                                                                    >
+                                                                        <LinkIcon size={14} strokeWidth={3} />
+                                                                    </button>
+                                                                )}
+                                                                <ChevronDown 
+                                                                    size={20} 
+                                                                    className={`text-slate-400 shrink-0 transition-transform duration-200 ease-in-out ${isCardExpanded ? `rotate-180 text-${tabThemeColor}-600` : ''}`} 
+                                                                />
+                                                              </div>
                                                           </div>
 
-                                                          {/* SLIDE-DOWN DETAILS */}
                                                           <div 
                                                               className={`grid transition-[grid-template-rows,opacity] duration-[300ms] ease-in-out ${
                                                                   isCardExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
@@ -579,7 +583,6 @@ export default function History() {
                                                                                   <Eye size={18} />
                                                                               </button>
                                                                           )}
-                                                                          {/* Only show the digital trail button if the document is NOT in deep archive */}
                                                                           {activeTab !== 'archived' ? (
                                                                               <button 
                                                                                   onClick={() => setTrailDoc(doc)}
@@ -601,7 +604,6 @@ export default function History() {
                                               })}
                                           </div>
 
-                                          {/* PAGINATION CONTROLS */}
                                           {totalPages > 1 && (
                                               <div className="p-3 sm:p-4 bg-white rounded-xl border border-slate-200 mt-4 flex items-center justify-between shadow-sm">
                                                   <span className="text-[10px] sm:text-xs font-bold text-slate-500">
@@ -635,9 +637,17 @@ export default function History() {
           )}
       </div>
 
-      {/* --- RENDER MODALS --- */}
       {trailDoc && <DigitalTrailModal doc={trailDoc} onBack={() => setTrailDoc(null)} />}
       {previewDocUrl && <FilePreviewModal url={previewDocUrl} onClose={() => setPreviewDocUrl(null)} />}
+      
+      {isLinkedModalOpen && linkedTargetRef && (
+        <LinkedDocumentsModal
+            isOpen={isLinkedModalOpen}
+            targetRef={linkedTargetRef}
+            onClose={() => setIsLinkedModalOpen(false)}
+            onPreview={(url) => setPreviewDocUrl(url)}
+        />
+      )}
     </div>
   );
 }
@@ -651,7 +661,6 @@ function TabButton({ label, icon, count, isActive, onClick, colorClass, badgeCla
                 isActive ? `${colorClass} border-transparent shadow-md` : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-700'
             }`}
         >
-            {/* Ping indicator dot if there are new items and tab is inactive */}
             {newCount > 0 && !isActive && (
                 <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -666,7 +675,6 @@ function TabButton({ label, icon, count, isActive, onClick, colorClass, badgeCla
                 <span className={`px-2 py-0.5 rounded-md text-[10px] font-black border shadow-sm ${isActive ? badgeClass : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
                     {count}
                 </span>
-                {/* Text Badge for new items */}
                 {newCount > 0 && !isActive && (
                     <span className="text-[9px] font-black text-white bg-red-500 px-1.5 py-0.5 rounded shadow-sm animate-in zoom-in flex items-center">
                         {newCount} NEW

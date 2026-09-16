@@ -3,7 +3,7 @@ import {
   Building2, FolderTree, Users, Shield, Plus, 
   Trash2, X, Activity, AlertTriangle, 
   ClipboardList, Settings, Clock, Search,
-  Save, ChevronDown, Phone, Zap, MapPin, Hash, AlertCircle, Mail, KeyRound, Eye, EyeOff, Copy, Check
+  Save, ChevronDown, Phone, Zap, MapPin, Hash, AlertCircle, Mail, KeyRound, Eye, EyeOff, Copy, Check, Edit
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import StorageMonitor from '../components/system/StorageMonitor'; 
-import DepartmentSelect from '../components/ui/DepartmentSelect'; // <-- 1. NEW IMPORT
+import DepartmentSelect from '../components/ui/DepartmentSelect';
 
 // --- Shared Modal Animation Styles ---
 const modalAnimationStyles = `
@@ -77,8 +77,22 @@ export default function SystemAdmin() {
 
   // --- LOCAL FORM STATES ---
   const [globalSettings, setGlobalSettings] = useState({ maintenanceMode: false, sessionTimeout: '30' });
-  const [newOffice, setNewOffice] = useState({ office_id: '', office_name: '', office_address: '' });
-  const [newCat, setNewCat] = useState({ category_id: '', name: '' });
+  
+  // UPDATED: Office State with Rich Metadata
+  const [newOffice, setNewOffice] = useState({ 
+      id: '', 
+      office_id: '', 
+      office_name: '', 
+      office_address: '',
+      department_head: '',
+      email_address: '',
+      contact_number: ''
+  });
+  const [isEditingOffice, setIsEditingOffice] = useState(false);
+  
+  // UPDATED: Category State with Prefix
+  const [newCat, setNewCat] = useState({ category_id: '', name: '', prefix: '' });
+  
   const [newEmp, setNewEmp] = useState({ 
     emp_id: '', name: '', email: '', designation: '', 
     department: '', contactNumber: '', password: '', confirmPassword: '' 
@@ -88,11 +102,15 @@ export default function SystemAdmin() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // --- Accordion & Pagination State for Employee Directory ---
+  // --- Accordion & Pagination State ---
   const [expandedDepts, setExpandedDepts] = useState<Record<string, boolean>>({});
   const [folderPages, setFolderPages] = useState<Record<string, number>>({});
+  
+  // NEW: Office Pagination
+  const [deptPage, setDeptPage] = useState(1);
+  const deptsPerPage = 6;
 
-  // --- 3. Audit Log Search State ---
+  // --- Audit Log Search State ---
   const [auditSearch, setAuditSearch] = useState('');
 
   // --- Modal Open/Close States ---
@@ -186,7 +204,11 @@ export default function SystemAdmin() {
   const employees = useMemo(() => adminData?.employees || [], [adminData?.employees]);
   const auditLogs = useMemo(() => adminData?.auditLogs || [], [adminData?.auditLogs]);
 
-  // --- 3. Filtered Audit Logs Logic ---
+  // --- Department Pagination Logic ---
+  const totalDeptPages = Math.ceil(departments.length / deptsPerPage);
+  const paginatedDepts = departments.slice((deptPage - 1) * deptsPerPage, deptPage * deptsPerPage);
+
+  // --- Filtered Audit Logs Logic ---
   const filteredAuditLogs = useMemo(() => {
       if (!auditSearch.trim()) return auditLogs;
       const term = auditSearch.toLowerCase();
@@ -198,10 +220,9 @@ export default function SystemAdmin() {
       );
   }, [auditLogs, auditSearch]);
 
-  // --- Group Employees by Department (Minimalist Folder Prep) ---
+  // --- Group Employees by Department ---
   const employeesByDepartment = useMemo(() => {
       const grouped: Record<string, typeof employees> = {};
-      
       departments.forEach(dept => { grouped[dept.name] = []; });
 
       employees.forEach(emp => {
@@ -227,7 +248,30 @@ export default function SystemAdmin() {
       window.crypto.getRandomValues(randomArray);
       const randomNum = 1000 + (randomArray[0] % 9000);
       
-      setNewOffice({ office_id: `OFC-${randomNum}`, office_name: '', office_address: '' });
+      setIsEditingOffice(false);
+      setNewOffice({ 
+          id: '', 
+          office_id: `OFC-${randomNum}`, 
+          office_name: '', 
+          office_address: '',
+          department_head: '',
+          email_address: '',
+          contact_number: ''
+      });
+      setIsDeptModalOpen(true);
+  };
+
+  const openEditOfficeModal = (dept: any) => {
+      setIsEditingOffice(true);
+      setNewOffice({
+          id: dept.id,
+          office_id: dept.office_id || 'OFC-LEGACY',
+          office_name: dept.name,
+          office_address: dept.office_address || '',
+          department_head: dept.department_head || '',
+          email_address: dept.email_address || '',
+          contact_number: dept.contact_number || ''
+      });
       setIsDeptModalOpen(true);
   };
 
@@ -236,7 +280,7 @@ export default function SystemAdmin() {
       window.crypto.getRandomValues(randomArray);
       const randomNum = 1000 + (randomArray[0] % 9000);
       
-      setNewCat({ category_id: `CAT-${randomNum}`, name: '' });
+      setNewCat({ category_id: `CAT-${randomNum}`, name: '', prefix: '' });
       setIsCatModalOpen(true);
   };
 
@@ -266,7 +310,7 @@ export default function SystemAdmin() {
       queryClient.invalidateQueries({ queryKey: ['adminData'] }); 
   };
 
-  // Departments Handlers
+  // Departments Handlers (Supports Add and Edit)
   const handleAddDepartment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newOffice.office_name.trim() || !newOffice.office_address.trim()) {
@@ -274,18 +318,30 @@ export default function SystemAdmin() {
         return;
     }
     
-    const { error } = await supabase.from('departments').insert([{ 
+    const payload = {
         name: newOffice.office_name.trim(),
         office_id: newOffice.office_id,
-        office_address: newOffice.office_address.trim()
-    }]);
+        office_address: newOffice.office_address.trim(),
+        department_head: newOffice.department_head.trim() || null,
+        email_address: newOffice.email_address.trim() || null,
+        contact_number: newOffice.contact_number.trim() || null
+    };
 
-    if (error) { toast.error('Failed to add office'); return; }
+    let error;
+    if (isEditingOffice) {
+        const res = await supabase.from('departments').update(payload).eq('id', newOffice.id);
+        error = res.error;
+    } else {
+        const res = await supabase.from('departments').insert([payload]);
+        error = res.error;
+    }
+
+    if (error) { toast.error(`Failed to ${isEditingOffice ? 'update' : 'add'} office`); return; }
     
     queryClient.invalidateQueries({ queryKey: ['adminData'] }); 
     closeDeptModal(); 
-    toast.success('Office added successfully');
-    logAuditAction(`Added new office: ${newOffice.office_name.trim()}`);
+    toast.success(`Office ${isEditingOffice ? 'updated' : 'added'} successfully`);
+    logAuditAction(`${isEditingOffice ? 'Updated' : 'Added new'} office: ${newOffice.office_name.trim()}`);
   };
 
   const confirmDeleteDepartment = async () => {
@@ -307,7 +363,13 @@ export default function SystemAdmin() {
     e.preventDefault();
     if (!newCat.name.trim()) { toast.error('Please provide a category name.'); return; }
     
-    const { error } = await supabase.from('categories').insert([{ name: newCat.name.trim(), category_id: newCat.category_id }]);
+    const payload = {
+        name: newCat.name.trim(),
+        category_id: newCat.category_id,
+        prefix: newCat.prefix.trim() || null
+    };
+
+    const { error } = await supabase.from('categories').insert([payload]);
 
     if (error) { toast.error('Failed to add category'); return; }
     
@@ -351,16 +413,13 @@ export default function SystemAdmin() {
 
     if (error || data?.error) {
         let displayMessage = error?.message || data?.error || 'Registration Failed';
-        
         try {
             const errObj = error as { context?: { json?: () => Promise<{ error?: string }> } };
             if (errObj?.context?.json) {
                 const bodyJson = await errObj.context.json();
                 if (bodyJson?.error) displayMessage = bodyJson.error;
             }
-        } catch {
-            // Fallback to initial message
-        }
+        } catch {}
 
         if (displayMessage.includes('Email has already been registered')) {
             setDuplicateError({
@@ -379,7 +438,6 @@ export default function SystemAdmin() {
     }
 
     setExpandedDepts(prev => ({ ...prev, [newEmp.department]: true }));
-
     queryClient.invalidateQueries({ queryKey: ['adminData'] });
     closeEmpModal(); 
     toast.success('Employee registered successfully');
@@ -512,14 +570,11 @@ export default function SystemAdmin() {
             <StatCard title="Audit Logs" value={auditLogs.length} icon={<ClipboardList className="text-orange-600" />} color="bg-orange-50 border-orange-200" />
           </div>
 
-          {/* Admin Dashboard Widgets Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
             <div className="lg:col-span-1">
               <StorageMonitor />
             </div>
-            <div className="lg:col-span-2">
-              {/* Future space reserved for TAT leaderboards and metrics */}
-            </div>
+            <div className="lg:col-span-2"></div>
           </div>
         </div>
       )}
@@ -535,7 +590,7 @@ export default function SystemAdmin() {
                 <SubTabButton label="Employees" icon={<Users size={16} />} isActive={dirTab === 'employees'} onClick={() => setDirTab('employees')} />
             </div>
 
-            {/* DEPARTMENTS */}
+            {/* DEPARTMENTS / OFFICES */}
             {dirTab === 'departments' && (
                 <div className="bg-white rounded-3xl border-2 border-slate-300 shadow-sm overflow-hidden animate-in fade-in">
                     <div className="bg-slate-50 px-6 py-4 border-b-2 border-slate-200 flex justify-between items-center">
@@ -546,8 +601,8 @@ export default function SystemAdmin() {
                     </div>
                     <div className="p-4 sm:p-6">
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                            {departments.map((dept) => (
-                                <div key={dept.id} className="flex flex-row items-start sm:items-center justify-between p-4 sm:p-5 bg-white rounded-xl border-2 border-slate-200 shadow-sm hover:border-slate-300 transition-colors gap-4">
+                            {paginatedDepts.map((dept) => (
+                                <div key={dept.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 sm:p-5 bg-white rounded-xl border-2 border-slate-200 shadow-sm hover:border-slate-300 transition-colors gap-4">
                                     <div className="flex flex-col gap-1 flex-1 min-w-0">
                                         <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest">{dept.office_id || 'OFC-LEGACY'}</span>
                                         <h4 className="font-black text-slate-900 text-sm sm:text-base leading-tight break-words">{dept.name}</h4>
@@ -555,17 +610,58 @@ export default function SystemAdmin() {
                                             <MapPin size={12} className="text-slate-400 shrink-0 mt-0.5" />
                                             {dept.office_address || 'No address provided'}
                                         </span>
+                                        {dept.department_head && (
+                                            <span className="text-[11px] sm:text-xs font-medium text-slate-500 flex items-start gap-1.5 break-words mt-0.5">
+                                                <Users size={12} className="text-slate-400 shrink-0 mt-0.5" />
+                                                Head: {dept.department_head}
+                                            </span>
+                                        )}
+                                        {dept.contact_number && (
+                                            <span className="text-[11px] sm:text-xs font-medium text-slate-500 flex items-start gap-1.5 break-words mt-0.5">
+                                                <Phone size={12} className="text-slate-400 shrink-0 mt-0.5" />
+                                                {dept.contact_number}
+                                            </span>
+                                        )}
                                     </div>
-                                    <button 
-                                        onClick={() => setDeleteConfirm({ id: dept.id, name: dept.name })} 
-                                        className="p-2 sm:p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 bg-white rounded-xl transition-all shrink-0 border-2 border-slate-200 hover:border-red-200 active:scale-95 shadow-sm mt-1 sm:mt-0"
-                                        title="Remove Office"
-                                    >
-                                        <Trash2 size={18} className="w-4 h-4 sm:w-5 sm:h-5" />
-                                    </button>
+                                    <div className="flex items-center gap-2 mt-2 sm:mt-0">
+                                        <button 
+                                            onClick={() => openEditOfficeModal(dept)} 
+                                            className="p-2 sm:p-2.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 bg-white rounded-xl transition-all shrink-0 border-2 border-slate-200 hover:border-blue-200 active:scale-95 shadow-sm"
+                                            title="Edit Office"
+                                        >
+                                            <Edit size={18} className="w-4 h-4 sm:w-5 sm:h-5" />
+                                        </button>
+                                        <button 
+                                            onClick={() => setDeleteConfirm({ id: dept.id, name: dept.name })} 
+                                            className="p-2 sm:p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 bg-white rounded-xl transition-all shrink-0 border-2 border-slate-200 hover:border-red-200 active:scale-95 shadow-sm"
+                                            title="Remove Office"
+                                        >
+                                            <Trash2 size={18} className="w-4 h-4 sm:w-5 sm:h-5" />
+                                        </button>
+                                    </div>
                                 </div>
                             ))}
                         </div>
+                        {/* Office Pagination */}
+                        {totalDeptPages > 1 && (
+                            <div className="mt-6 flex items-center justify-between bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                <span className="text-[11px] sm:text-xs font-bold text-slate-500">
+                                    Showing {((deptPage - 1) * deptsPerPage) + 1} to {Math.min(deptPage * deptsPerPage, departments.length)} of {departments.length}
+                                </span>
+                                <div className="flex gap-2">
+                                    <button 
+                                        disabled={deptPage === 1}
+                                        onClick={() => setDeptPage(p => Math.max(1, p - 1))}
+                                        className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-lg text-[11px] sm:text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-100 active:scale-95 transition-all shadow-sm"
+                                    >Prev</button>
+                                    <button 
+                                        disabled={deptPage === totalDeptPages}
+                                        onClick={() => setDeptPage(p => Math.min(totalDeptPages, p + 1))}
+                                        className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-lg text-[11px] sm:text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-100 active:scale-95 transition-all shadow-sm"
+                                    >Next</button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
@@ -586,6 +682,11 @@ export default function SystemAdmin() {
                                     <div className="flex flex-col gap-1 flex-1 min-w-0">
                                         <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest">{cat.category_id || 'CAT-LEGACY'}</span>
                                         <h4 className="font-black text-slate-900 text-sm sm:text-base leading-tight break-words">{cat.name}</h4>
+                                        {cat.prefix && (
+                                            <span className="text-[11px] font-bold text-blue-600 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded w-fit mt-1">
+                                                Prefix: {cat.prefix}
+                                            </span>
+                                        )}
                                     </div>
                                     <button 
                                         onClick={() => setDeleteCatConfirm({ id: cat.id, name: cat.name })} 
@@ -601,7 +702,7 @@ export default function SystemAdmin() {
                 </div>
             )}
 
-            {/* EMPLOYEES DIRECTORY (BORDERED FOLDERS WITH PAGINATION) */}
+            {/* EMPLOYEES DIRECTORY */}
             {dirTab === 'employees' && (
                 <div className="bg-white rounded-3xl border-2 border-slate-300 shadow-sm overflow-hidden animate-in fade-in">
                     <div className="bg-slate-50 px-6 py-4 border-b-2 border-slate-200 flex justify-between items-center">
@@ -614,8 +715,6 @@ export default function SystemAdmin() {
                     <div className="p-4 sm:p-6">
                         {employeesByDepartment.map(({ department, emps }) => {
                             const isExpanded = expandedDepts[department];
-                            
-                            // Pagination logic (5 per folder)
                             const currentPage = folderPages[department] || 1;
                             const itemsPerPage = 5;
                             const totalPages = Math.ceil(emps.length / itemsPerPage);
@@ -623,7 +722,6 @@ export default function SystemAdmin() {
 
                             return (
                                 <div key={department} className="mb-4 last:mb-0 bg-white border-2 border-slate-200 rounded-xl overflow-hidden hover:border-slate-300 transition-colors shadow-sm">
-                                    {/* MINIMAL FOLDER HEADER */}
                                     <button 
                                         onClick={() => toggleDeptAccordion(department)}
                                         className={`w-full py-4 px-4 flex items-start sm:items-center justify-between transition-colors focus:outline-none group ${isExpanded ? 'bg-slate-50' : 'bg-transparent'}`}
@@ -640,7 +738,6 @@ export default function SystemAdmin() {
                                         />
                                     </button>
 
-                                    {/* MINIMAL FOLDER CONTENT (EMPLOYEES) */}
                                     {isExpanded && (
                                         <div className="animate-in fade-in slide-in-from-top-1 duration-200 bg-white border-t-2 border-slate-100 flex flex-col">
                                             {emps.length === 0 ? (
@@ -651,13 +748,10 @@ export default function SystemAdmin() {
                                                 <div className="divide-y divide-slate-100">
                                                     {paginatedEmps.map((emp) => (
                                                         <div key={emp.id} className="flex flex-row items-start sm:items-center justify-between p-4 sm:p-5 gap-4 group hover:bg-slate-50/50 transition-colors border-b border-slate-200 last:border-b-0">
-                                                            
-                                                            {/* SMART VERTICAL STACK */}
                                                             <div className="flex flex-col gap-1 flex-1 min-w-0">
                                                                 <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest">{emp.emp_id}</span>
                                                                 <h4 className="font-black text-slate-900 text-sm sm:text-base leading-tight break-words">{emp.name}</h4>
                                                                 <span className="text-xs sm:text-sm font-bold text-slate-600 break-words">{emp.designation}</span>
-                                                                
                                                                 {emp.email && (
                                                                     <span className="text-[11px] sm:text-xs font-medium text-slate-500 flex items-start gap-1.5 break-all mt-0.5">
                                                                         <Mail size={12} className="text-slate-400 shrink-0 mt-0.5"/> 
@@ -665,8 +759,6 @@ export default function SystemAdmin() {
                                                                     </span>
                                                                 )}
                                                             </div>
-
-                                                            {/* RIGHT BORDERED BUTTONS */}
                                                             <div className="flex items-center gap-2">
                                                                 <button 
                                                                     onClick={() => openResetPasswordModal(emp as EmployeeData)}
@@ -687,8 +779,6 @@ export default function SystemAdmin() {
                                                     ))}
                                                 </div>
                                             )}
-
-                                            {/* PAGINATION CONTROLS (Only shows if > 5 employees) */}
                                             {totalPages > 1 && (
                                                 <div className="p-3 sm:p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
                                                     <span className="text-[10px] sm:text-xs font-bold text-slate-500">
@@ -699,16 +789,12 @@ export default function SystemAdmin() {
                                                             disabled={currentPage === 1}
                                                             onClick={() => setFolderPages(prev => ({...prev, [department]: currentPage - 1}))}
                                                             className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-lg text-[11px] sm:text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-100 active:scale-95 transition-all shadow-sm"
-                                                        >
-                                                            Prev
-                                                        </button>
+                                                        >Prev</button>
                                                         <button 
                                                             disabled={currentPage === totalPages}
                                                             onClick={() => setFolderPages(prev => ({...prev, [department]: currentPage + 1}))}
                                                             className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-lg text-[11px] sm:text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-100 active:scale-95 transition-all shadow-sm"
-                                                        >
-                                                            Next
-                                                        </button>
+                                                        >Next</button>
                                                     </div>
                                                 </div>
                                             )}
@@ -735,7 +821,6 @@ export default function SystemAdmin() {
                 </div>
                 <div className="relative w-full sm:w-64">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                    {/* --- 3. AUDIT LOG SEARCH INPUT --- */}
                     <input 
                         type="text" 
                         value={auditSearch}
@@ -758,7 +843,6 @@ export default function SystemAdmin() {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                        {/* --- 3. MAPPING FILTERED LOGS --- */}
                         {filteredAuditLogs.map((log) => (
                             <tr key={log.id} className="hover:bg-slate-50 transition-colors">
                                 <td className="p-4 text-sm font-mono text-slate-500">#{log.id}</td>
@@ -770,8 +854,6 @@ export default function SystemAdmin() {
                         ))}
                     </tbody>
                 </table>
-                
-                {/* --- 3. AUDIT LOG EMPTY STATE --- */}
                 {filteredAuditLogs.length === 0 && (
                     <div className="p-8 text-center flex flex-col items-center justify-center gap-2">
                         <Search size={32} className="text-slate-300" />
@@ -797,8 +879,6 @@ export default function SystemAdmin() {
                 <h3 className="text-xl font-black tracking-wide">Global System Configuration</h3>
             </div>
             <div className="p-6 sm:p-8 space-y-8 relative z-10">
-                
-                {/* Maintenance Mode */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 bg-red-50 border-2 border-red-200 rounded-2xl">
                     <div>
                         <h4 className="font-black text-red-900 text-lg flex items-center gap-2">
@@ -813,9 +893,7 @@ export default function SystemAdmin() {
                         <span className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out mt-0.5 ml-0.5 ${globalSettings.maintenanceMode ? 'translate-x-6' : 'translate-x-0'}`} />
                     </button>
                 </div>
-
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Session Timeout */}
                     <div className="max-w-md">
                         <label className="block text-base font-bold text-slate-900 mb-2 flex items-center gap-2">
                             <Clock size={18} className="text-slate-500"/> Auto-Logout Session Timeout
@@ -829,7 +907,6 @@ export default function SystemAdmin() {
                         <p className="text-xs font-bold text-slate-500 mt-2">Logs users out after inactivity.</p>
                     </div>
                 </div>
-
             </div>
             <div className="bg-slate-50 p-6 border-t-2 border-slate-200 flex justify-end rounded-b-[22px]">
                 <button onClick={saveGlobalSettings} className="w-full sm:w-auto px-8 py-4 bg-slate-900 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 text-base border-2 border-slate-900 hover:border-blue-700 shadow-md">
@@ -843,19 +920,19 @@ export default function SystemAdmin() {
           MODALS WITH ANIMATIONS
       ========================================= */}
       
-      {/* MODAL 1: ADD DEPARTMENT / OFFICE */}
+      {/* MODAL 1: ADD / EDIT DEPARTMENT OFFICE */}
       {isDeptModalOpen && (
         <div className={`fixed inset-0 z-[999] flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/50 backdrop-blur-sm ${isClosingDept ? 'animate-overlay-fade-out' : 'animate-overlay-fade'}`}>
-          <div className={`bg-white w-full max-w-lg rounded-t-[1.5rem] sm:rounded-2xl shadow-2xl overflow-hidden ${isClosingDept ? 'animate-responsive-modal-close' : 'animate-responsive-modal'}`}>
-            <div className="bg-slate-900 text-white p-5 flex items-center justify-between">
-              <h3 className="font-black text-xl">Add New Office</h3>
+          <div className={`bg-white w-full max-w-lg rounded-t-[1.5rem] sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] ${isClosingDept ? 'animate-responsive-modal-close' : 'animate-responsive-modal'}`}>
+            <div className="bg-slate-900 text-white p-5 flex items-center justify-between shrink-0">
+              <h3 className="font-black text-xl">{isEditingOffice ? 'Edit Office' : 'Add New Office'}</h3>
               <button onClick={closeDeptModal} className="p-2 bg-white/10 hover:bg-white/20 rounded-full"><X size={20} /></button>
             </div>
-            <form onSubmit={handleAddDepartment} className="p-6 space-y-5">
+            <form onSubmit={handleAddDepartment} className="p-6 space-y-5 overflow-y-auto custom-scrollbar flex-1">
               
               <div className="bg-blue-50 border-2 border-blue-200 p-4 rounded-xl flex items-center justify-between">
                  <div>
-                    <p className="text-xs font-bold text-blue-800 uppercase tracking-wider mb-0.5">Auto-Generated Office ID</p>
+                    <p className="text-xs font-bold text-blue-800 uppercase tracking-wider mb-0.5">Office ID</p>
                     <p className="font-mono text-lg font-black text-slate-900 tracking-widest">{newOffice.office_id}</p>
                  </div>
                  <Hash className="text-blue-500" size={24} />
@@ -879,13 +956,50 @@ export default function SystemAdmin() {
                   value={newOffice.office_address} 
                   onChange={(e) => setNewOffice({...newOffice, office_address: e.target.value})} 
                   placeholder="e.g. 2nd Floor, Capitol Building, Bangued, Abra" 
-                  className="w-full p-3.5 bg-slate-50 border-2 border-slate-400 rounded-xl focus:border-slate-900 outline-none font-bold text-slate-900 text-base min-h-[100px] resize-y" 
+                  className="w-full p-3.5 bg-slate-50 border-2 border-slate-400 rounded-xl focus:border-slate-900 outline-none font-bold text-slate-900 text-base min-h-[80px] resize-y" 
                 ></textarea>
+              </div>
+
+              {/* NEW RICH METADATA FIELDS */}
+              <div>
+                <label className="block text-sm font-bold text-slate-900 mb-1.5 flex items-center gap-1.5"><Users size={16} /> Department Head (Optional)</label>
+                <input 
+                  type="text" 
+                  value={newOffice.department_head} 
+                  onChange={(e) => setNewOffice({...newOffice, department_head: e.target.value})} 
+                  placeholder="e.g. Dr. Juan Dela Cruz" 
+                  className="w-full p-3.5 bg-slate-50 border-2 border-slate-200 focus:border-slate-900 rounded-xl outline-none font-bold text-slate-900 text-base transition-colors" 
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-bold text-slate-900 mb-1.5 flex items-center gap-1.5"><Mail size={16} /> Email (Optional)</label>
+                    <input 
+                      type="email" 
+                      value={newOffice.email_address} 
+                      onChange={(e) => setNewOffice({...newOffice, email_address: e.target.value})} 
+                      placeholder="office@abrapho.gov" 
+                      className="w-full p-3.5 bg-slate-50 border-2 border-slate-200 focus:border-slate-900 rounded-xl outline-none font-bold text-slate-900 text-base transition-colors" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-900 mb-1.5 flex items-center gap-1.5"><Phone size={16} /> Contact (Optional)</label>
+                    <input 
+                      type="tel" 
+                      value={newOffice.contact_number} 
+                      onChange={(e) => setNewOffice({...newOffice, contact_number: e.target.value})} 
+                      placeholder="0917-000-0000" 
+                      className="w-full p-3.5 bg-slate-50 border-2 border-slate-200 focus:border-slate-900 rounded-xl outline-none font-bold text-slate-900 text-base transition-colors" 
+                    />
+                  </div>
               </div>
 
               <div className="pt-4 flex gap-3 shrink-0">
                 <button type="button" onClick={closeDeptModal} className="flex-1 py-3.5 bg-white border-2 border-slate-300 text-slate-700 font-bold rounded-xl active:scale-95 transition-transform text-base">Cancel</button>
-                <button type="submit" className="flex-[1.5] py-3.5 bg-slate-900 text-white font-bold rounded-xl border-2 border-slate-900 active:scale-95 transition-transform text-base">Register Office</button>
+                <button type="submit" className="flex-[1.5] py-3.5 bg-slate-900 text-white font-bold rounded-xl border-2 border-slate-900 active:scale-95 transition-transform text-base">
+                    {isEditingOffice ? 'Save Changes' : 'Register Office'}
+                </button>
               </div>
             </form>
           </div>
@@ -925,7 +1039,7 @@ export default function SystemAdmin() {
               
               <div className="bg-blue-50 border-2 border-blue-200 p-4 rounded-xl flex items-center justify-between">
                  <div>
-                    <p className="text-xs font-bold text-blue-800 uppercase tracking-wider mb-0.5">Auto-Generated Category ID</p>
+                    <p className="text-xs font-bold text-blue-800 uppercase tracking-wider mb-0.5">Category ID</p>
                     <p className="font-mono text-lg font-black text-slate-900 tracking-widest">{newCat.category_id}</p>
                  </div>
                  <FolderTree className="text-blue-500" size={24} />
@@ -941,6 +1055,19 @@ export default function SystemAdmin() {
                   className="w-full p-3.5 bg-slate-50 border-2 border-slate-400 rounded-xl focus:border-slate-900 outline-none font-bold text-slate-900 text-base" 
                   autoFocus 
                 />
+              </div>
+
+              {/* NEW CATEGORY PREFIX INPUT */}
+              <div>
+                <label className="block text-sm font-bold text-slate-900 mb-1.5">Category Acronym / Prefix (Optional)</label>
+                <input 
+                  type="text" 
+                  value={newCat.prefix} 
+                  onChange={(e) => setNewCat({...newCat, prefix: e.target.value.toUpperCase()})} 
+                  placeholder="e.g. PR" 
+                  className="w-full p-3.5 bg-slate-50 border-2 border-slate-200 focus:border-slate-900 rounded-xl outline-none font-bold text-slate-900 text-base transition-colors" 
+                />
+                <p className="text-xs text-slate-500 font-bold mt-2">This is used to automatically generate tracking numbers (e.g. PR-2026-1234).</p>
               </div>
 
               <div className="pt-4 flex gap-3 shrink-0">
@@ -1078,7 +1205,6 @@ export default function SystemAdmin() {
               
               <div>
                 <label className="block text-sm font-bold text-slate-900 mb-1.5">Employee ID *</label>
-                {/* --- 2. FORCED UPPERCASE ON ID INPUT --- */}
                 <input 
                     type="text" 
                     value={newEmp.emp_id} 
@@ -1110,7 +1236,6 @@ export default function SystemAdmin() {
 
               <div className="relative z-50">
                 <label className="block text-sm font-bold text-slate-900 mb-1.5">Department / Agency *</label>
-                {/* --- 1. REPLACED WITH NEW DepartmentSelect COMPONENT --- */}
                 <DepartmentSelect 
                     value={newEmp.department} 
                     onChange={(val: string) => setNewEmp({...newEmp, department: val})} 
@@ -1181,7 +1306,7 @@ export default function SystemAdmin() {
 function CustomSelect({ options, value, onChange, placeholder }: CustomSelectProps) {
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
-  
+    
     useEffect(() => {
       function handleClickOutside(event: MouseEvent) {
         if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) setIsOpen(false);
@@ -1189,7 +1314,7 @@ function CustomSelect({ options, value, onChange, placeholder }: CustomSelectPro
       document.addEventListener("mousedown", handleClickOutside);
       return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
-  
+    
     return (
       <div className="relative w-full" ref={dropdownRef}>
         <button type="button" onClick={() => setIsOpen(!isOpen)} className={`w-full px-4 py-3.5 bg-slate-50 border border-slate-200 focus:bg-white focus:border-blue-500 rounded-xl flex justify-between items-center transition-all text-base outline-none active:scale-[0.99] ${isOpen ? 'border-blue-500 bg-white ring-4 ring-blue-500/10' : 'hover:bg-white hover:border-slate-300'} ${!value ? 'text-slate-500 font-medium' : 'text-slate-900 font-bold'}`}>

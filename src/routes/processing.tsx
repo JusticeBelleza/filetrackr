@@ -1,11 +1,10 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, X, Activity, CornerUpLeft, RefreshCw, CheckCircle, MapPin, Layers, Ban, AlertCircle, Zap } from 'lucide-react';
+import { Search, X, Activity, CornerUpLeft, RefreshCw, CheckCircle, MapPin, Layers, Ban, AlertCircle, Zap, Link as LinkIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '../lib/supabase';
 import type { ProcessingData, DocumentItem } from '../types/processing';
 
-// Components & Modals
 import HandoverScreen from '../components/system/HandoverScreen';
 import DigitalTrailModal from '../components/system/DigitalTrailModal';
 import FilePreviewModal from '../components/system/FilePreviewModal';
@@ -14,8 +13,8 @@ import DocumentCard from '../components/processing/DocumentCard';
 import ReassignModal from '../components/processing/ReassignModal';
 import CancelModal from '../components/processing/CancelModal';
 import ReRouteModal from '../components/processing/ReRouteModal';
+import LinkedDocumentsModal from '../components/processing/LinkedDocumentsModal';
 
-// --- DATA FETCHING FUNCTION ---
 const fetchProcessingData = async (): Promise<ProcessingData & { currentUserDept: string }> => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error("No authenticated session");
@@ -36,11 +35,14 @@ const fetchProcessingData = async (): Promise<ProcessingData & { currentUserDept
         }
     }
 
-    const [docsRes, deptRes, allEmpsRes] = await Promise.all([
+    const [docsRes, deptRes, allEmpsRes, parentRefsRes] = await Promise.all([
         supabase.from('documents').select('*').neq('status', 'sealed').neq('status', 'cancelled'),
         supabase.from('departments').select('name').order('name'),
-        supabase.from('employees').select('name').order('name')
+        supabase.from('employees').select('name').order('name'),
+        supabase.from('documents').select('parent_doc_ref').not('parent_doc_ref', 'is', null)
     ]);
+
+    const parentRefSet = new Set(parentRefsRes.data?.map(d => d.parent_doc_ref) || []);
 
     let processing: DocumentItem[] = [];
     let returned: DocumentItem[] = [];
@@ -48,7 +50,10 @@ const fetchProcessingData = async (): Promise<ProcessingData & { currentUserDept
     const allEmployeesList = allEmpsRes.data ? allEmpsRes.data.map(e => ({ label: e.name, value: e.name })) : [];
 
     if (docsRes.data) {
-        const myActiveDocs = (docsRes.data as DocumentItem[]).filter((d) => {
+        const myActiveDocs = (docsRes.data as any[]).map(d => ({
+            ...d,
+            has_children: parentRefSet.has(d.reference_no)
+        })).filter((d) => {
             if (d.status === 'cancelled') return false;
             return d.created_by === currentUserId || d.assigned_clerk === currentUserName;
         });
@@ -71,7 +76,6 @@ export default function Processing() {
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
   const [isBatchMenuClosing, setIsBatchMenuClosing] = useState(false);
   
-  // Modals
   const [selectedDoc, setSelectedDoc] = useState<DocumentItem | null>(null);
   const [trailDoc, setTrailDoc] = useState<DocumentItem | null>(null);
   const [previewDocUrl, setPreviewDocUrl] = useState<string | null>(null);
@@ -79,9 +83,11 @@ export default function Processing() {
   const [cancelDoc, setCancelDoc] = useState<DocumentItem | null>(null);
   const [reRouteDoc, setReRouteDoc] = useState<DocumentItem | null>(null);
   
-  // Handshake Modals
   const [declineDoc, setDeclineDoc] = useState<DocumentItem | null>(null);
   const [receiveDoc, setReceiveDoc] = useState<DocumentItem | null>(null);
+
+  const [linkedTargetRef, setLinkedTargetRef] = useState<string | null>(null);
+  const [isLinkedModalOpen, setIsLinkedModalOpen] = useState(false);
 
   const [lastViewedProcessing, setLastViewedProcessing] = useState(() => localStorage.getItem('filetrackr_viewed_processing') || '0');
   const [lastViewedReturned, setLastViewedReturned] = useState(() => localStorage.getItem('filetrackr_viewed_returned') || '0');
@@ -239,10 +245,8 @@ export default function Processing() {
       </div>
 
       <div key={activeTab} className="animate-in fade-in zoom-in-[0.97] duration-300 ease-out fill-mode-both">
-          
-          {/* --- ICON LEGEND --- */}
           {activeTab === 'processing' && (
-              <div className="flex items-center justify-center sm:justify-start gap-4 mb-5 px-2">
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 mb-5 px-2">
                   <div className="flex items-center gap-1.5">
                       <div className="w-[18px] h-[18px] flex items-center justify-center bg-amber-50 text-amber-600 border border-amber-200 rounded-[4px] shadow-sm">
                           <AlertCircle size={11} strokeWidth={2.5}/>
@@ -260,6 +264,13 @@ export default function Processing() {
                           <Zap size={11} strokeWidth={2.5}/>
                       </div>
                       <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Rush</span>
+                  </div>
+                  {/* --- NEW: Linked Document Legend Icon --- */}
+                  <div className="flex items-center gap-1.5">
+                      <div className="w-[18px] h-[18px] flex items-center justify-center bg-blue-50 text-blue-600 border border-blue-200 rounded-[4px] shadow-sm">
+                          <LinkIcon size={11} strokeWidth={3}/>
+                      </div>
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Linked</span>
                   </div>
               </div>
           )}
@@ -309,6 +320,13 @@ export default function Processing() {
                                                 onRevise={(d: DocumentItem) => setReRouteDoc(d)}
                                                 onReceive={(d: DocumentItem) => setReceiveDoc(d)}
                                                 onDecline={(d: DocumentItem) => setDeclineDoc(d)}
+                                                onViewLinked={(d: any) => {
+                                                    const targetRef = d.parent_doc_ref || d.reference_no;
+                                                    if (targetRef) {
+                                                        setLinkedTargetRef(targetRef);
+                                                        setIsLinkedModalOpen(true);
+                                                    }
+                                                }}
                                               />
                                           ))}
                                       </div>
@@ -334,6 +352,13 @@ export default function Processing() {
                             onRevise={(d: DocumentItem) => setReRouteDoc(d)}
                             onReceive={(d: DocumentItem) => setReceiveDoc(d)}
                             onDecline={(d: DocumentItem) => setDeclineDoc(d)}
+                            onViewLinked={(d: any) => {
+                                const targetRef = d.parent_doc_ref || d.reference_no;
+                                if (targetRef) {
+                                    setLinkedTargetRef(targetRef);
+                                    setIsLinkedModalOpen(true);
+                                }
+                            }}
                           />
                       ))}
                   </div>
@@ -389,6 +414,16 @@ export default function Processing() {
       {/* THE HANDSHAKE MODALS */}
       {declineDoc && <DeclineModal doc={declineDoc} currentUserName={data?.currentUserName || ''} onClose={() => setDeclineDoc(null)} onSuccess={() => refetch()} />}
       {receiveDoc && <ReceiveModal doc={receiveDoc} currentUserDept={data?.currentUserDept || ''} currentUserName={data?.currentUserName || ''} onClose={() => setReceiveDoc(null)} onSuccess={() => refetch()} />}
+    
+      {/* --- LINKED DOCUMENTS MODAL --- */}
+      {isLinkedModalOpen && linkedTargetRef && (
+        <LinkedDocumentsModal
+            isOpen={isLinkedModalOpen}
+            targetRef={linkedTargetRef}
+            onClose={() => setIsLinkedModalOpen(false)}
+            onPreview={(url) => setPreviewDocUrl(url)}
+        />
+      )}
     </div>
   );
 }

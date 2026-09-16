@@ -42,6 +42,25 @@ export interface DocumentItem {
     action_time?: string; 
     category?: string;
     creator_name?: string;
+    parent_doc_ref?: string | null; // <--- NEW: For Mother Document Linking
+}
+
+// NEW: Added for the Admin Portal Category Manager
+export interface Category {
+    id: string;
+    name: string;
+    prefix?: string | null; // <--- NEW: For Dynamic Numbering
+}
+
+// NEW: Added for the Admin Portal Office Manager
+export interface Department {
+    id: string;
+    name: string;
+    address?: string; // Kept for legacy support
+    office_address?: string; // Standardized naming
+    department_head?: string | null; // <--- NEW: Rich Metadata
+    email_address?: string | null; // <--- NEW: Rich Metadata
+    contact_number?: string | null; // <--- NEW: Rich Metadata
 }
 
 export interface DepartmentOption {

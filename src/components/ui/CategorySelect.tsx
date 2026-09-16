@@ -5,11 +5,12 @@ import { supabase } from '../../lib/supabase';
 interface Category {
     id: string;
     name: string;
+    prefix?: string | null; // <-- NEW: Added Prefix
 }
 
 interface CategorySelectProps {
     value: string;
-    onChange: (categoryName: string) => void;
+    onChange: (categoryName: string, prefix?: string | null) => void; // <-- NEW: Now passes prefix back up
     isRelative?: boolean;
 }
 
@@ -18,7 +19,7 @@ export default function CategorySelect({ value, onChange, isRelative = false }: 
     const [searchTerm, setSearchTerm] = useState('');
     
     const [categories, setCategories] = useState<Category[]>([]);
-    const [, setPage] = useState(0); // Using setter only to avoid unused variable error
+    const [, setPage] = useState(0); 
     const [hasMore, setHasMore] = useState(true);
     const [isLoading, setIsLoading] = useState(false);
     
@@ -32,9 +33,10 @@ export default function CategorySelect({ value, onChange, isRelative = false }: 
             const from = currentPage * ITEMS_PER_PAGE;
             const to = from + ITEMS_PER_PAGE - 1;
 
+            // NEW: Added 'prefix' to the select query
             let query = supabase
                 .from('categories')
-                .select('id, name', { count: 'exact' })
+                .select('id, name, prefix', { count: 'exact' })
                 .order('name', { ascending: true })
                 .range(from, to);
 
@@ -152,7 +154,8 @@ export default function CategorySelect({ value, onChange, isRelative = false }: 
                                         key={`${cat.id}-${index}`}
                                         ref={isLastElement ? lastCategoryElementRef : null}
                                         onClick={() => {
-                                            onChange(cat.name);
+                                            // NEW: We now pass BOTH the name and the prefix up!
+                                            onChange(cat.name, cat.prefix);
                                             setIsOpen(false);
                                             setSearchTerm('');
                                         }}

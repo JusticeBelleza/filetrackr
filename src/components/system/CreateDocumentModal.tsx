@@ -1,13 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { X, FileText, AlertCircle, Send, Hash, Camera, CheckCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, FileText, AlertCircle, Send, Hash, Camera, CheckCircle, Search, Loader2, Link as LinkIcon, Copy, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { useUiStore } from '../../store/uiStore';
 import { supabase } from '../../lib/supabase';
-// Ensure DocumentScanner is saved in the same directory, or adjust this import path
 import DocumentScanner from './DocumentScanner';
 import EmployeeSelect from '../ui/EmployeeSelect'; 
 import DepartmentSelect from '../ui/DepartmentSelect'; 
-import CategorySelect from '../ui/CategorySelect'; // <-- Imported the new CategorySelect
+import CategorySelect from '../ui/CategorySelect'; 
 
 // --- Shared Modal Animation Styles ---
 const modalAnimationStyles = `
@@ -33,31 +32,132 @@ const modalAnimationStyles = `
     }
 `;
 
+function LinkedDocumentSelect({ value, onChange }: { value: string, onChange: (val: string) => void }) {
+    const [isOpen, setIsOpen] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [docs, setDocs] = useState<{ reference_no: string; title: string }[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    const searchDocs = async (term: string) => {
+        if (!term.trim()) {
+            setDocs([]);
+            return;
+        }
+        setIsLoading(true);
+        try {
+            const { data, error } = await supabase
+                .from('documents')
+                .select('reference_no, title')
+                .or(`reference_no.ilike.%${term}%,title.ilike.%${term}%`)
+                .order('created_at', { ascending: false })
+                .limit(10);
+            
+            if (error) throw error;
+            setDocs(data || []);
+        } catch (error) {
+            console.error("Error searching documents:", error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        const delayDebounceFn = setTimeout(() => {
+            searchDocs(searchTerm);
+        }, 300);
+        return () => clearTimeout(delayDebounceFn);
+    }, [searchTerm]);
+
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+    return (
+        <div className="relative w-full" ref={dropdownRef}>
+            <label className="block text-xs sm:text-sm font-bold text-slate-900 mb-1.5 flex items-center gap-1.5">
+                <LinkIcon size={16} className="text-blue-500" /> Linked Ref. No. (Optional)
+            </label>
+            <div className="relative">
+                <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                    type="text"
+                    value={isOpen ? searchTerm : value}
+                    onChange={(e) => {
+                        setSearchTerm(e.target.value);
+                        onChange(e.target.value); 
+                        if (!isOpen) setIsOpen(true);
+                    }}
+                    onFocus={() => setIsOpen(true)}
+                    placeholder="Search Ref. No. or title to link..."
+                    className="w-full pl-10 p-3 sm:p-3.5 bg-white border-2 border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 rounded-xl outline-none font-bold text-slate-900 text-sm sm:text-base transition-all"
+                />
+            </div>
+            
+            {isOpen && searchTerm.trim().length > 0 && (
+                <div className="absolute z-50 w-full mt-2 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2">
+                    <div className="max-h-48 overflow-y-auto custom-scrollbar p-1.5">
+                        {isLoading ? (
+                            <div className="flex items-center justify-center p-4">
+                                <Loader2 size={18} className="animate-spin text-blue-500" />
+                            </div>
+                        ) : docs.length === 0 ? (
+                            <div className="p-3 text-sm text-slate-500 text-center font-medium">No matching documents found.</div>
+                        ) : (
+                            docs.map((doc) => (
+                                <div 
+                                    key={doc.reference_no}
+                                    onClick={() => {
+                                        onChange(doc.reference_no);
+                                        setSearchTerm('');
+                                        setIsOpen(false);
+                                    }}
+                                    className="p-3 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors border-b border-slate-100 last:border-0"
+                                >
+                                    <p className="text-xs font-mono font-bold text-slate-500">{doc.reference_no}</p>
+                                    <p className="text-sm font-bold text-slate-900 truncate">{doc.title}</p>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
 export default function CreateDocumentModal() {
     const closeCreateModal = useUiStore((state: { closeCreateModal: () => void }) => state.closeCreateModal);
     
     const [isClosing, setIsClosing] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
-
-    // Document Scanner State
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     
-    // --- ADDED: Store current user's name to check for self-assignment ---
     const [currentUserName, setCurrentUserName] = useState<string>("");
     const [currentUserDept, setCurrentUserDept] = useState<string>("");
 
     const [attachment, setAttachment] = useState<File | Blob | null>(null);
     const [attachmentName, setAttachmentName] = useState<string>('');
 
-    const [formData, setFormData] = useState(() => ({
-        trackingNumber: `DOC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+    // --- NEW: Copy to Clipboard State ---
+    const [hasCopied, setHasCopied] = useState(false);
+
+    const [formData, setFormData] = useState({
+        trackingNumber: '', 
         title: '',
         category: '',
+        parentDocRef: '', 
         destination: '',
         assignedClerk: '',
         isUrgent: false,
         remarks: ''
-    }));
+    });
 
     const fetchInitialData = async () => {
         try {
@@ -65,7 +165,6 @@ export default function CreateDocumentModal() {
             if (session) {
                 const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', session.user.id).single();
                 if (profile?.full_name) {
-                    // --- FIXED: Store the user's name for comparison ---
                     setCurrentUserName(profile.full_name);
                     
                     const { data: empData } = await supabase.from('employees').select('department').eq('name', profile.full_name).single();
@@ -90,15 +189,40 @@ export default function CreateDocumentModal() {
 
     const handleScanComplete = (pdfBlob: Blob) => {
         setAttachment(pdfBlob);
-        setAttachmentName(`Scanned_Doc_${formData.trackingNumber}.pdf`);
+        setAttachmentName(`Scanned_Doc_${formData.trackingNumber || 'New'}.pdf`);
         setIsScannerOpen(false);
+    };
+
+    const handleCategoryChange = (categoryName: string, prefix?: string | null) => {
+        const year = new Date().getFullYear();
+        const randomId = Math.floor(1000 + Math.random() * 9000);
+        const finalPrefix = prefix || 'DOC'; 
+        
+        setFormData({
+            ...formData,
+            category: categoryName,
+            trackingNumber: `${finalPrefix}-${year}-${randomId}`
+        });
+        setHasCopied(false); // Reset copy state if they change the category
+    };
+
+    // --- NEW: Copy Function ---
+    const handleCopyRef = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (formData.trackingNumber) {
+            navigator.clipboard.writeText(formData.trackingNumber);
+            setHasCopied(true);
+            toast.success("Ref. No. copied to clipboard!");
+            setTimeout(() => setHasCopied(false), 2000);
+        }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (!formData.title.trim() || !formData.category || !formData.destination) {
-            toast.error('Please fill in all required fields.');
+        if (!formData.title.trim() || !formData.category || !formData.destination || !formData.trackingNumber) {
+            toast.error('Please select a category, destination, and enter a title.');
             return;
         }
 
@@ -131,7 +255,6 @@ export default function CreateDocumentModal() {
                 attachmentUrl = data.publicUrl;
             }
 
-            // --- FIXED: Smart Bypass! Skip handshake if assigning to self ---
             let initialStatus = 'routing';
             if (formData.assignedClerk && formData.assignedClerk !== currentUserName) {
                 initialStatus = 'pending_receipt';
@@ -141,6 +264,7 @@ export default function CreateDocumentModal() {
                 reference_no: formData.trackingNumber,
                 title: formData.title.trim(),
                 category: formData.category,
+                parent_doc_ref: formData.parentDocRef.trim() || null, 
                 final_destination: formData.destination,
                 assigned_clerk: formData.assignedClerk || null,
                 is_urgent: formData.isUrgent,
@@ -161,7 +285,7 @@ export default function CreateDocumentModal() {
                 created_by: user.id 
             }]);
 
-            toast.success('Document Routed Successfully!', { description: `Tracking No: ${formData.trackingNumber}` });
+            toast.success('Document Routed Successfully!', { description: `Ref. No: ${formData.trackingNumber}` });
             
             handleClose();
 
@@ -195,12 +319,37 @@ export default function CreateDocumentModal() {
                 <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto custom-scrollbar p-5 sm:p-8 bg-white">
                     <div className="space-y-6">
 
-                        <div className="bg-white border-2 border-slate-200 p-4 rounded-xl flex items-center justify-between shadow-sm">
+                        <div className="relative z-50">
+                            <CategorySelect 
+                                value={formData.category}
+                                onChange={handleCategoryChange}
+                                isRelative={true}
+                            />
+                        </div>
+
+                        <div className={`border-2 p-3 sm:p-4 rounded-xl flex items-center justify-between shadow-sm transition-all ${formData.trackingNumber ? 'bg-orange-50 border-orange-200' : 'bg-slate-50 border-slate-200 border-dashed'}`}>
                             <div>
-                                <p className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider mb-0.5">Tracking Number</p>
-                                <p className="font-mono text-lg sm:text-xl font-black text-slate-900 tracking-widest">{formData.trackingNumber}</p>
+                                <p className={`text-[9px] sm:text-[10px] font-bold uppercase tracking-wider mb-0.5 ${formData.trackingNumber ? 'text-orange-700' : 'text-slate-400'}`}>Ref. No.</p>
+                                {formData.trackingNumber ? (
+                                    <p className="font-mono text-base sm:text-lg font-black text-slate-900 tracking-widest animate-in fade-in">{formData.trackingNumber}</p>
+                                ) : (
+                                    <p className="font-mono text-xs sm:text-sm font-bold text-slate-400 italic">Select a category to generate...</p>
+                                )}
                             </div>
-                            <Hash className="text-slate-300" size={28} />
+                            
+                            {/* --- NEW: Copy to Clipboard Button --- */}
+                            {formData.trackingNumber ? (
+                                <button 
+                                    type="button"
+                                    onClick={handleCopyRef}
+                                    className={`p-2.5 rounded-xl transition-all border active:scale-95 shrink-0 ${hasCopied ? 'bg-emerald-50 border-emerald-200 text-emerald-600 shadow-sm' : 'bg-white border-orange-200 text-orange-500 hover:text-orange-600 hover:bg-orange-100 shadow-sm'}`}
+                                    title="Copy to clipboard"
+                                >
+                                    {hasCopied ? <Check size={18} strokeWidth={3} /> : <Copy size={18} strokeWidth={2.5} />}
+                                </button>
+                            ) : (
+                                <Hash className="text-slate-300" size={24} />
+                            )}
                         </div>
 
                         <div>
@@ -211,6 +360,13 @@ export default function CreateDocumentModal() {
                                 onChange={(e) => setFormData({...formData, title: e.target.value})}
                                 placeholder="e.g. Budget Request for Q3" 
                                 className="w-full p-3 sm:p-3.5 bg-white border-2 border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 rounded-xl outline-none font-bold text-slate-900 text-sm sm:text-base transition-all" 
+                            />
+                        </div>
+
+                        <div className="relative z-40">
+                            <LinkedDocumentSelect 
+                                value={formData.parentDocRef}
+                                onChange={(val: string) => setFormData({...formData, parentDocRef: val})}
                             />
                         </div>
 
@@ -255,17 +411,7 @@ export default function CreateDocumentModal() {
                             )}
                         </div>
 
-                        {/* NEW CLEAN CATEGORY SELECT */}
-                        <div className="relative z-30">
-                            <CategorySelect 
-                                value={formData.category}
-                                onChange={(val: string) => setFormData({...formData, category: val})}
-                                isRelative={true}
-                            />
-                        </div>
-
                         <div className="p-5 rounded-[1.25rem] border-2 border-slate-100 bg-slate-50/50 space-y-5">
-                            
                             <div className="relative z-20">
                                 <DepartmentSelect 
                                     value={formData.destination} 
@@ -273,7 +419,6 @@ export default function CreateDocumentModal() {
                                     isRelative={true}
                                 />
                             </div>
-
                             <div className="relative z-10">
                                 <EmployeeSelect
                                     value={formData.assignedClerk}

@@ -14,9 +14,24 @@ export interface ReleaseNote {
 export const CHANGELOG: ReleaseNote[] = [
     {
         version: "1.2.0",
-        date: "September 14, 2026",
-        tagline: "Strict Type Safety & UI Polish",
+        date: "September 16, 2026",
+        tagline: "Document Family Hierarchies & Department Directory",
         features: [
+            { 
+                icon: "🔗", 
+                title: "Linked Document Families", 
+                desc: "Added Mother-Child relationship visualization, allowing you to link related transactions and view complete document dependencies." 
+            },
+            { 
+                icon: "🏢", 
+                title: "Dashboard Department Directory", 
+                desc: "Integrated a collapsible, paginated office directory directly onto the dashboard with icon-only quick-dial and email triggers." 
+            },
+            { 
+                icon: "📋", 
+                title: "Optimized Ref. No. Formatting", 
+                desc: "Streamlined tracking reference displays with compact styling and one-click copy-to-clipboard functionality." 
+            },
             { 
                 icon: "🎨", 
                 title: "Minimalist Document Cards", 
@@ -25,7 +40,7 @@ export const CHANGELOG: ReleaseNote[] = [
             { 
                 icon: "📖", 
                 title: "Status Icon Legend", 
-                desc: "Added a quick-reference visual legend above the Active Routing list to help users instantly identify Pending, Received, and Rush documents." 
+                desc: "Added a quick-reference visual legend above the Active Routing list to help users instantly identify Pending, Received, Rush, and Linked documents." 
             },
             { 
                 icon: "🛡️", 
@@ -71,14 +86,7 @@ export const CHANGELOG: ReleaseNote[] = [
                 icon: "🔎", 
                 title: "Client-Side Audit Search", 
                 desc: "Activated the search bar in the Admin Audit Logs, allowing instant filtering by User, Action, Log ID, or IP Address with a custom empty state." 
-            }
-        ]
-    },
-    {
-        version: "1.2.0",
-        date: "September 12, 2026",
-        tagline: "Smart Daily Overview & Turnaround SLA Monitoring",
-        features: [
+            },
             { 
                 icon: "✨", 
                 title: "Smart Daily Overview", 

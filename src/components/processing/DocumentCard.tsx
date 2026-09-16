@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { AlertCircle, MapPin, Eye, Clock, ChevronRight, User, MessageSquareWarning, CheckSquare, Square, ChevronDown, UserPlus, Ban, Check, CheckCircle, X, Zap } from 'lucide-react';
+import { AlertCircle, MapPin, Eye, Clock, ChevronRight, User, MessageSquareWarning, CheckSquare, Square, ChevronDown, UserPlus, Ban, Check, CheckCircle, X, Zap, Link as LinkIcon } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { formatPHDateTime } from '../../lib/utils';
 import type { DocumentItem } from '../../types/processing';
 
 interface DocumentCardProps {
-    doc: DocumentItem;
+    doc: DocumentItem & { has_children?: boolean }; // <-- Supports Mother Docs
     activeTab: 'processing' | 'returned';
     isSelected: boolean;
     isExpanded: boolean;
@@ -22,14 +22,14 @@ interface DocumentCardProps {
     onAction?: (doc: DocumentItem) => void;
     onReceive?: (doc: DocumentItem) => void; 
     onDecline?: (doc: DocumentItem) => void; 
+    onViewLinked?: (doc: DocumentItem) => void;
 }
 
 export default function DocumentCard({
     doc, activeTab, isSelected, isExpanded, showCheckbox, currentUserName, currentUserId,
-    onToggleSelection, onToggleCollapse, onPreview, onTrack, onReassign, onCancel, onRevise, onAction, onReceive, onDecline
+    onToggleSelection, onToggleCollapse, onPreview, onTrack, onReassign, onCancel, onRevise, onAction, onReceive, onDecline, onViewLinked
 }: DocumentCardProps) {
     
-    // Keep local state in sync if the parent list forces an update
     const [localDoc, setLocalDoc] = useState(doc);
     useEffect(() => {
         setLocalDoc(doc);
@@ -40,11 +40,8 @@ export default function DocumentCard({
     const canReassign = isManager || isCreator;
     const canRevise = isManager || isCreator;
 
-    // ----------------------------------------------------
-    // Helper for aging computation (Excludes Weekends)
-    // ----------------------------------------------------
     const start = new Date(localDoc.updated_at || localDoc.created_at);
-    const end = new Date(); // now
+    const end = new Date();
     
     let totalWorkingMs = 0;
     
@@ -52,7 +49,7 @@ export default function DocumentCard({
         let current = new Date(start);
         while (current < end) {
             const dayOfWeek = current.getDay();
-            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6; // 0 = Sunday, 6 = Saturday
+            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
             const nextMidnight = new Date(current);
             nextMidnight.setHours(24, 0, 0, 0);
@@ -60,7 +57,6 @@ export default function DocumentCard({
             const nextStep = nextMidnight < end ? nextMidnight : end;
             const timeDiff = nextStep.getTime() - current.getTime();
 
-            // Only add the time if it's a weekday
             if (!isWeekend) {
                 totalWorkingMs += timeDiff;
             }
@@ -77,9 +73,6 @@ export default function DocumentCard({
     if (diffHours >= 72) { agingColorTheme = "bg-rose-50 text-rose-700 border-rose-200 animate-pulse"; } 
     else if (diffHours >= 48) { agingColorTheme = "bg-amber-50 text-amber-700 border-amber-200"; }
 
-    // ----------------------------------------------------
-    // ACTION NEEDED TAB VIEW
-    // ----------------------------------------------------
     if (activeTab === 'returned') {
         return (
             <div className="bg-white rounded-[1.5rem] border-2 border-amber-300 shadow-sm shadow-amber-100 hover:border-amber-400 transition-all relative overflow-hidden flex flex-col group">
@@ -87,10 +80,24 @@ export default function DocumentCard({
                 
                 <div className="p-5 flex-1 flex flex-col pl-6">
                     <div className="flex justify-between items-start mb-3">
-                        <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded font-mono border border-slate-200">{localDoc.reference_no || localDoc.id.substring(0, 8)}</span>
-                        <span className="flex items-center gap-1 text-[10px] font-black text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200 uppercase tracking-wider">
-                            <AlertCircle size={12} strokeWidth={3}/> Needs Revision
+                        <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded font-mono border border-slate-200">
+                            {localDoc.reference_no || localDoc.id.substring(0, 8)}
                         </span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="flex items-center gap-1 text-[10px] font-black text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200 uppercase tracking-wider">
+                                <AlertCircle size={12} strokeWidth={3}/> Needs Revision
+                            </span>
+                            {/* --- LINK ICON FOR RETURNED TAB --- */}
+                            {(localDoc.parent_doc_ref || localDoc.has_children) && (
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); onViewLinked?.(localDoc); }} 
+                                    className="w-[22px] h-[22px] flex items-center justify-center bg-blue-50 text-blue-600 border border-blue-200 rounded-md shadow-sm hover:bg-blue-100 transition-colors shrink-0" 
+                                    title="View Document Family"
+                                >
+                                    <LinkIcon size={12} strokeWidth={3} />
+                                </button>
+                            )}
+                        </div>
                     </div>
                     
                     <h4 className="font-black text-lg text-slate-900 mb-1.5 leading-tight group-hover:text-blue-600 transition-colors">{localDoc.title || localDoc.subject}</h4>
@@ -149,9 +156,6 @@ export default function DocumentCard({
         );
     }
 
-    // ----------------------------------------------------
-    // ACTIVE ROUTING TAB VIEW
-    // ----------------------------------------------------
     return (
         <div className={`bg-white rounded-2xl border-2 transition-all relative overflow-hidden flex flex-col h-full ${localDoc.is_urgent ? 'border-red-300 shadow-sm hover:border-red-400' : (isSelected ? 'border-blue-500 ring-4 ring-blue-500/10' : 'border-slate-200 hover:border-slate-300')}`}>
             <div className={`absolute top-0 left-0 w-full h-1 ${localDoc.is_urgent ? 'bg-red-600' : (isSelected ? 'bg-blue-500' : 'bg-transparent')}`}></div>
@@ -165,13 +169,13 @@ export default function DocumentCard({
                 )}
                 
                 <div className="flex flex-col min-w-0 flex-1">
-                    {/* --- TOP ROW: TIME (Left) & ICONS (Right) --- */}
                     <div className="flex items-start justify-between gap-2 mb-2.5">
                         <div className={`px-1.5 py-0.5 rounded border flex items-center gap-1 shadow-sm shrink-0 ${agingColorTheme}`}>
                             <Clock size={10} strokeWidth={2.5} />
                             <span className="text-[10px] font-black tracking-widest font-mono">{displayTime}</span>
                         </div>
                         
+                        {/* --- ICONS CLUSTER (TOP RIGHT) --- */}
                         <div className="flex items-center gap-1.5 shrink-0">
                             {localDoc.status === 'pending_receipt' ? (
                                 <div className="w-[22px] h-[22px] flex items-center justify-center bg-amber-50 text-amber-600 border border-amber-200 rounded-md shadow-sm" title="Pending Receipt">
@@ -188,11 +192,21 @@ export default function DocumentCard({
                                     <Zap size={14} strokeWidth={2.5}/>
                                 </div>
                             )}
+
+                            {/* LINK ICON PLACED LAST, BEFORE CHEVRON */}
+                            {(localDoc.parent_doc_ref || localDoc.has_children) && (
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); onViewLinked?.(localDoc); }} 
+                                    className="w-[22px] h-[22px] flex items-center justify-center bg-blue-50 text-blue-600 border border-blue-200 rounded-md shadow-sm hover:bg-blue-100 transition-colors shrink-0" 
+                                    title="View Document Family"
+                                >
+                                    <LinkIcon size={12} strokeWidth={3} />
+                                </button>
+                            )}
                         </div>
                     </div>
 
-                    {/* --- BOTTOM ROW: DOC ID & TITLE --- */}
-                    <div className="flex flex-col items-start gap-1">
+                    <div className="flex flex-col items-start gap-1.5">
                         <span className="text-[10px] font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 shrink-0">
                             {localDoc.reference_no || localDoc.id.substring(0, 8)}
                         </span>
@@ -209,7 +223,6 @@ export default function DocumentCard({
                 <div className="overflow-hidden">
                     <div className="p-4 pt-1 border-t border-slate-100 bg-white space-y-4">
                         
-                        {/* REALTIME TRACKER RENDERS HERE */}
                         {isExpanded && <MiniRouteTracker documentId={localDoc.id} documentStatus={localDoc.status} />}
                         
                         <div className="flex items-center gap-1.5 pt-1">
@@ -237,7 +250,6 @@ export default function DocumentCard({
                         </div>
                         
                         <div className="flex flex-col gap-2 pt-1">
-                            {/* Hide Track & Reassign during Handshake, but keep Preview if attached */}
                             {(localDoc.attachment_url || localDoc.status !== 'pending_receipt') && (
                                 <div className="flex gap-2">
                                     {localDoc.attachment_url && (
@@ -261,7 +273,6 @@ export default function DocumentCard({
                                 </div>
                             )}
                             
-                            {/* --- THE NEW DIGITAL HANDSHAKE LOGIC --- */}
                             {isManager && localDoc.status === 'pending_receipt' ? (
                                 <div className="flex gap-2 w-full mt-1">
                                     {onReceive && (
@@ -306,9 +317,7 @@ export default function DocumentCard({
     );
 }
 
-// ----------------------------------------------------
-// MINI ROUTE TRACKER COMPONENT (INTERNAL TO CARD)
-// ----------------------------------------------------
+// ... Keep existing MiniRouteTracker ...
 function MiniRouteTracker({ documentId, documentStatus }: { documentId: string, documentStatus?: string }) {
     const [nodes, setNodes] = useState<{location: string, isRejected: boolean}[]>([]);
     const [loading, setLoading] = useState(true);
