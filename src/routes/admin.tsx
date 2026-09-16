@@ -70,6 +70,31 @@ interface EmployeeData {
     designation?: string;
 }
 
+interface DepartmentItem {
+    id: string;
+    name: string;
+    office_id?: string;
+    office_address?: string;
+    department_head?: string;
+    email_address?: string;
+    contact_number?: string;
+}
+
+interface CategoryItem {
+    id: string;
+    name: string;
+    category_id?: string;
+    prefix?: string;
+}
+
+interface AuditLogItem {
+    id: number;
+    user_name: string;
+    action: string;
+    ip_address?: string;
+    created_at: string;
+}
+
 export default function SystemAdmin() {
   const queryClient = useQueryClient();
   const [mainTab, setMainTab] = useState<'dashboard' | 'directory' | 'audit' | 'settings'>('dashboard');
@@ -94,8 +119,8 @@ export default function SystemAdmin() {
   const [newCat, setNewCat] = useState({ category_id: '', name: '', prefix: '' });
   
   const [newEmp, setNewEmp] = useState({ 
-    emp_id: '', name: '', email: '', designation: '', 
-    department: '', contactNumber: '', password: '', confirmPassword: '' 
+      emp_id: '', name: '', email: '', designation: '', 
+      department: '', contactNumber: '', password: '', confirmPassword: '' 
   });
   
   // Password Visibility Toggles
@@ -179,10 +204,10 @@ export default function SystemAdmin() {
       ]);
 
       return {
-        departments: deptRes.data || [],
-        categories: catRes.data || [],
-        employees: empRes.data || [],
-        auditLogs: logRes.data || [],
+        departments: (deptRes.data || []) as DepartmentItem[],
+        categories: (catRes.data || []) as CategoryItem[],
+        employees: (empRes.data || []) as EmployeeData[],
+        auditLogs: (logRes.data || []) as AuditLogItem[],
         settings: settingsRes.data
       };
     }
@@ -222,12 +247,13 @@ export default function SystemAdmin() {
 
   // --- Group Employees by Department ---
   const employeesByDepartment = useMemo(() => {
-      const grouped: Record<string, typeof employees> = {};
+      const grouped: Record<string, EmployeeData[]> = {};
       departments.forEach(dept => { grouped[dept.name] = []; });
 
       employees.forEach(emp => {
-          if (!grouped[emp.department]) grouped[emp.department] = []; 
-          grouped[emp.department].push(emp);
+          const deptName = emp.department || 'Unassigned';
+          if (!grouped[deptName]) grouped[deptName] = []; 
+          grouped[deptName].push(emp);
       });
 
       return Object.entries(grouped)
@@ -261,7 +287,7 @@ export default function SystemAdmin() {
       setIsDeptModalOpen(true);
   };
 
-  const openEditOfficeModal = (dept: any) => {
+  const openEditOfficeModal = (dept: DepartmentItem) => {
       setIsEditingOffice(true);
       setNewOffice({
           id: dept.id,
@@ -358,15 +384,34 @@ export default function SystemAdmin() {
       closeDeleteModal();
   };
 
-  // Categories Handlers
+  // Categories Handlers (With Smart Duplicate Prefix Validation)
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCat.name.trim()) { toast.error('Please provide a category name.'); return; }
     
+    const trimmedPrefix = newCat.prefix ? newCat.prefix.trim().toUpperCase() : null;
+
+    // --- SMART DUPLICATE PREFIX CHECK ---
+    if (trimmedPrefix) {
+        const isDuplicate = categories.some(
+            cat => cat.prefix && cat.prefix.toUpperCase() === trimmedPrefix
+        );
+
+        if (isDuplicate) {
+            const conflictingCat = categories.find(
+                cat => cat.prefix && cat.prefix.toUpperCase() === trimmedPrefix
+            );
+            toast.error('Duplicate Prefix Detected!', {
+                description: `The prefix "${trimmedPrefix}" is already in use by "${conflictingCat?.name}". Please choose a unique acronym.`
+            });
+            return; 
+        }
+    }
+    
     const payload = {
         name: newCat.name.trim(),
         category_id: newCat.category_id,
-        prefix: newCat.prefix.trim() || null
+        prefix: trimmedPrefix
     };
 
     const { error } = await supabase.from('categories').insert([payload]);
@@ -376,7 +421,7 @@ export default function SystemAdmin() {
     queryClient.invalidateQueries({ queryKey: ['adminData'] });
     closeCatModal(); 
     toast.success('Category added successfully');
-    logAuditAction(`Added new category: ${newCat.name.trim()}`);
+    logAuditAction(`Added new category: ${newCat.name.trim()} (${trimmedPrefix || 'No Prefix'})`);
   };
 
   const confirmDeleteCategory = async () => {
@@ -419,7 +464,9 @@ export default function SystemAdmin() {
                 const bodyJson = await errObj.context.json();
                 if (bodyJson?.error) displayMessage = bodyJson.error;
             }
-        } catch {}
+        } catch {
+            // Ignored safely
+        }
 
         if (displayMessage.includes('Email has already been registered')) {
             setDuplicateError({
@@ -761,7 +808,7 @@ export default function SystemAdmin() {
                                                             </div>
                                                             <div className="flex items-center gap-2">
                                                                 <button 
-                                                                    onClick={() => openResetPasswordModal(emp as EmployeeData)}
+                                                                    onClick={() => openResetPasswordModal(emp)}
                                                                     className="p-2 sm:p-2.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 bg-white rounded-xl transition-all shrink-0 border-2 border-slate-200 hover:border-amber-200 active:scale-95 shadow-sm mt-1 sm:mt-0"
                                                                     title="Reset Password"
                                                                 >
@@ -960,7 +1007,6 @@ export default function SystemAdmin() {
                 ></textarea>
               </div>
 
-              {/* NEW RICH METADATA FIELDS */}
               <div>
                 <label className="block text-sm font-bold text-slate-900 mb-1.5 flex items-center gap-1.5"><Users size={16} /> Department Head (Optional)</label>
                 <input 

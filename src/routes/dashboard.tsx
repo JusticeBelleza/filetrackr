@@ -261,11 +261,13 @@ export default function Dashboard() {
       }
   });
 
-  const filteredDepts = departmentsData.filter((dept: any) => 
-      dept.name?.toLowerCase().includes(dirSearch.toLowerCase()) || 
-      dept.office_address?.toLowerCase().includes(dirSearch.toLowerCase()) ||
-      dept.department_head?.toLowerCase().includes(dirSearch.toLowerCase())
-  );
+  const filteredDepts = departmentsData.filter((dept: Record<string, unknown>) => {
+      const name = typeof dept.name === 'string' ? dept.name.toLowerCase() : '';
+      const address = typeof dept.office_address === 'string' ? dept.office_address.toLowerCase() : '';
+      const head = typeof dept.department_head === 'string' ? dept.department_head.toLowerCase() : '';
+      const term = dirSearch.toLowerCase();
+      return name.includes(term) || address.includes(term) || head.includes(term);
+  });
   
   const totalDirPages = Math.ceil(filteredDepts.length / DIR_PER_PAGE);
   const paginatedDepts = filteredDepts.slice((dirPage - 1) * DIR_PER_PAGE, dirPage * DIR_PER_PAGE);
@@ -500,43 +502,43 @@ export default function Dashboard() {
                       {paginatedDepts.length === 0 ? (
                           <p className="text-center py-6 text-sm text-slate-400 font-bold italic border-2 border-dashed border-slate-100 rounded-xl">No offices found.</p>
                       ) : (
-                          paginatedDepts.map((dept: any) => (
-                              <div key={dept.id} className="border-2 border-slate-200 rounded-2xl p-4 bg-white shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                          paginatedDepts.map((dept: Record<string, unknown>) => (
+                              <div key={dept.id as string} className="border-2 border-slate-200 rounded-2xl p-4 bg-white shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                   
                                   {/* Department Text Details */}
                                   <div className="flex flex-col gap-1 flex-1 min-w-0">
-                                      <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest">{dept.office_id || 'OFC-LEGACY'}</span>
-                                      <h4 className="font-black text-slate-900 text-base leading-tight break-words">{dept.name}</h4>
+                                      <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest">{(dept.office_id as string) || 'OFC-LEGACY'}</span>
+                                      <h4 className="font-black text-slate-900 text-base leading-tight break-words">{dept.name as string}</h4>
                                       
                                       <span className="text-xs font-medium text-slate-600 flex items-start gap-1.5 break-words mt-0.5">
                                           <MapPin size={13} className="text-slate-400 shrink-0 mt-0.5" />
-                                          {dept.office_address || dept.address || 'No address provided'}
+                                          {(dept.office_address as string) || (dept.address as string) || 'No address provided'}
                                       </span>
 
-                                      {dept.department_head && (
+                                      {Boolean(dept.department_head) && (
                                           <span className="text-xs font-medium text-slate-600 flex items-start gap-1.5 break-words">
                                               <Users size={13} className="text-slate-400 shrink-0 mt-0.5" />
-                                              Head: {dept.department_head}
+                                              Head: {dept.department_head as string}
                                           </span>
                                       )}
                                   </div>
 
                                   {/* Icon-Only Action Buttons */}
                                   <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                                      {dept.contact_number && (
+                                      {Boolean(dept.contact_number) && (
                                           <a 
-                                              href={`tel:${dept.contact_number}`} 
+                                              href={`tel:${dept.contact_number as string}`} 
                                               className="w-[40px] h-[40px] flex items-center justify-center bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 active:scale-90 transition-all border border-emerald-200 shadow-sm"
-                                              title={`Call: ${dept.contact_number}`}
+                                              title={`Call: ${dept.contact_number as string}`}
                                           >
                                               <Phone size={18} strokeWidth={2.5} />
                                           </a>
                                       )}
-                                      {dept.email_address && (
+                                      {Boolean(dept.email_address) && (
                                           <a 
-                                              href={`mailto:${dept.email_address}`} 
+                                              href={`mailto:${dept.email_address as string}`} 
                                               className="w-[40px] h-[40px] flex items-center justify-center bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 active:scale-90 transition-all border border-blue-200 shadow-sm"
-                                              title={`Email: ${dept.email_address}`}
+                                              title={`Email: ${dept.email_address as string}`}
                                           >
                                               <Mail size={18} strokeWidth={2.5} />
                                           </a>

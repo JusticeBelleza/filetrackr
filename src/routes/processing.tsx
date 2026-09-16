@@ -50,9 +50,10 @@ const fetchProcessingData = async (): Promise<ProcessingData & { currentUserDept
     const allEmployeesList = allEmpsRes.data ? allEmpsRes.data.map(e => ({ label: e.name, value: e.name })) : [];
 
     if (docsRes.data) {
-        const myActiveDocs = (docsRes.data as any[]).map(d => ({
+        const rawDocs = docsRes.data as DocumentItem[];
+        const myActiveDocs = rawDocs.map(d => ({
             ...d,
-            has_children: parentRefSet.has(d.reference_no)
+            has_children: parentRefSet.has(d.reference_no ?? '')
         })).filter((d) => {
             if (d.status === 'cancelled') return false;
             return d.created_by === currentUserId || d.assigned_clerk === currentUserName;
@@ -265,7 +266,6 @@ export default function Processing() {
                       </div>
                       <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Rush</span>
                   </div>
-                  {/* --- NEW: Linked Document Legend Icon --- */}
                   <div className="flex items-center gap-1.5">
                       <div className="w-[18px] h-[18px] flex items-center justify-center bg-blue-50 text-blue-600 border border-blue-200 rounded-[4px] shadow-sm">
                           <LinkIcon size={11} strokeWidth={3}/>
@@ -278,7 +278,7 @@ export default function Processing() {
           {filteredDocs.length === 0 && (
               <div className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-10 flex flex-col items-center justify-center text-center">
                   <div className="bg-white p-4 border-2 border-slate-100 rounded-xl mb-4 shadow-sm">
-                    {activeTab === 'processing' ? <Search size={36} className="text-slate-400" /> : <CheckCircle size={36} className="text-emerald-500" />}
+                      {activeTab === 'processing' ? <Search size={36} className="text-slate-400" /> : <CheckCircle size={36} className="text-emerald-500" />}
                   </div>
                   <h3 className="text-xl font-black text-slate-900 mb-2">{activeTab === 'processing' ? 'No documents found' : 'Inbox Zero!'}</h3>
                   <p className="text-base font-medium text-slate-500 max-w-md">{activeTab === 'processing' ? 'You currently have no active documents assigned to you.' : 'You have no returned documents requiring your attention. Great job!'}</p>
@@ -308,25 +308,25 @@ export default function Processing() {
                                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
                                           {clerkDocs.map(doc => (
                                               <DocumentCard 
-                                                key={doc.id} doc={doc} activeTab={activeTab} isSelected={selectedDocs.some(d => d.id === doc.id)}
-                                                isExpanded={!!expandedCards[doc.id]} showCheckbox={clerkDocCounts[doc.assigned_clerk || 'Unassigned'] > 1 && (!selectedDocs.length || selectedDocs[0].assigned_clerk === (doc.assigned_clerk || 'Unassigned'))}
-                                                currentUserName={data?.currentUserName || ''} currentUserId={data?.currentUserId || ''}
-                                                onToggleSelection={(d: DocumentItem) => setSelectedDocs((prev: DocumentItem[]) => prev.some((x: DocumentItem) => x.id === d.id) ? prev.filter((x: DocumentItem) => x.id !== d.id) : [...prev, d])}
-                                                onToggleCollapse={(id: string) => setExpandedCards((prev: Record<string, boolean>) => ({...prev, [id]: !prev[id]}))}
-                                                onPreview={(url: string) => setPreviewDocUrl(url)} onTrack={(d: DocumentItem) => setTrailDoc(d)}
-                                                onReassign={(d: DocumentItem) => setReassignDoc(d)} 
-                                                onAction={(d: DocumentItem) => setSelectedDoc(d)}
-                                                onCancel={(d: DocumentItem) => setCancelDoc(d)}
-                                                onRevise={(d: DocumentItem) => setReRouteDoc(d)}
-                                                onReceive={(d: DocumentItem) => setReceiveDoc(d)}
-                                                onDecline={(d: DocumentItem) => setDeclineDoc(d)}
-                                                onViewLinked={(d: any) => {
-                                                    const targetRef = d.parent_doc_ref || d.reference_no;
-                                                    if (targetRef) {
-                                                        setLinkedTargetRef(targetRef);
-                                                        setIsLinkedModalOpen(true);
-                                                    }
-                                                }}
+                                                  key={doc.id} doc={doc} activeTab={activeTab} isSelected={selectedDocs.some(d => d.id === doc.id)}
+                                                  isExpanded={!!expandedCards[doc.id]} showCheckbox={clerkDocCounts[doc.assigned_clerk || 'Unassigned'] > 1 && (!selectedDocs.length || selectedDocs[0].assigned_clerk === (doc.assigned_clerk || 'Unassigned'))}
+                                                  currentUserName={data?.currentUserName || ''} currentUserId={data?.currentUserId || ''}
+                                                  onToggleSelection={(d: DocumentItem) => setSelectedDocs((prev: DocumentItem[]) => prev.some((x: DocumentItem) => x.id === d.id) ? prev.filter((x: DocumentItem) => x.id !== d.id) : [...prev, d])}
+                                                  onToggleCollapse={(id: string) => setExpandedCards((prev: Record<string, boolean>) => ({...prev, [id]: !prev[id]}))}
+                                                  onPreview={(url: string) => setPreviewDocUrl(url)} onTrack={(d: DocumentItem) => setTrailDoc(d)}
+                                                  onReassign={(d: DocumentItem) => setReassignDoc(d)} 
+                                                  onAction={(d: DocumentItem) => setSelectedDoc(d)}
+                                                  onCancel={(d: DocumentItem) => setCancelDoc(d)}
+                                                  onRevise={(d: DocumentItem) => setReRouteDoc(d)}
+                                                  onReceive={(d: DocumentItem) => setReceiveDoc(d)}
+                                                  onDecline={(d: DocumentItem) => setDeclineDoc(d)}
+                                                  onViewLinked={(d: DocumentItem) => {
+                                                      const targetRef = d.parent_doc_ref || d.reference_no;
+                                                      if (targetRef) {
+                                                          setLinkedTargetRef(targetRef);
+                                                          setIsLinkedModalOpen(true);
+                                                      }
+                                                  }}
                                               />
                                           ))}
                                       </div>
@@ -341,24 +341,24 @@ export default function Processing() {
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                       {filteredDocs.map((doc: DocumentItem) => (
                           <DocumentCard 
-                            key={doc.id} doc={doc} activeTab={activeTab} isSelected={selectedDocs.some(d => d.id === doc.id)}
-                            isExpanded={!!expandedCards[doc.id]} showCheckbox={clerkDocCounts[doc.assigned_clerk || 'Unassigned'] > 1 && (!selectedDocs.length || selectedDocs[0].assigned_clerk === (doc.assigned_clerk || 'Unassigned'))}
-                            currentUserName={data?.currentUserName || ''} currentUserId={data?.currentUserId || ''}
-                            onToggleSelection={(d: DocumentItem) => setSelectedDocs((prev: DocumentItem[]) => prev.some((x: DocumentItem) => x.id === d.id) ? prev.filter((x: DocumentItem) => x.id !== d.id) : [...prev, d])}
-                            onToggleCollapse={(id: string) => setExpandedCards((prev: Record<string, boolean>) => ({...prev, [id]: !prev[id]}))}
-                            onPreview={(url: string) => setPreviewDocUrl(url)} onTrack={(d: DocumentItem) => setTrailDoc(d)}
-                            onReassign={(d: DocumentItem) => setReassignDoc(d)} 
-                            onCancel={(d: DocumentItem) => setCancelDoc(d)}
-                            onRevise={(d: DocumentItem) => setReRouteDoc(d)}
-                            onReceive={(d: DocumentItem) => setReceiveDoc(d)}
-                            onDecline={(d: DocumentItem) => setDeclineDoc(d)}
-                            onViewLinked={(d: any) => {
-                                const targetRef = d.parent_doc_ref || d.reference_no;
-                                if (targetRef) {
-                                    setLinkedTargetRef(targetRef);
-                                    setIsLinkedModalOpen(true);
-                                }
-                            }}
+                              key={doc.id} doc={doc} activeTab={activeTab} isSelected={selectedDocs.some(d => d.id === doc.id)}
+                              isExpanded={!!expandedCards[doc.id]} showCheckbox={clerkDocCounts[doc.assigned_clerk || 'Unassigned'] > 1 && (!selectedDocs.length || selectedDocs[0].assigned_clerk === (doc.assigned_clerk || 'Unassigned'))}
+                              currentUserName={data?.currentUserName || ''} currentUserId={data?.currentUserId || ''}
+                              onToggleSelection={(d: DocumentItem) => setSelectedDocs((prev: DocumentItem[]) => prev.some((x: DocumentItem) => x.id === d.id) ? prev.filter((x: DocumentItem) => x.id !== d.id) : [...prev, d])}
+                              onToggleCollapse={(id: string) => setExpandedCards((prev: Record<string, boolean>) => ({...prev, [id]: !prev[id]}))}
+                              onPreview={(url: string) => setPreviewDocUrl(url)} onTrack={(d: DocumentItem) => setTrailDoc(d)}
+                              onReassign={(d: DocumentItem) => setReassignDoc(d)} 
+                              onCancel={(d: DocumentItem) => setCancelDoc(d)}
+                              onRevise={(d: DocumentItem) => setReRouteDoc(d)}
+                              onReceive={(d: DocumentItem) => setReceiveDoc(d)}
+                              onDecline={(d: DocumentItem) => setDeclineDoc(d)}
+                              onViewLinked={(d: DocumentItem) => {
+                                  const targetRef = d.parent_doc_ref || d.reference_no;
+                                  if (targetRef) {
+                                      setLinkedTargetRef(targetRef);
+                                      setIsLinkedModalOpen(true);
+                                  }
+                              }}
                           />
                       ))}
                   </div>
@@ -402,7 +402,6 @@ export default function Processing() {
           />
       )}
 
-      {/* Modals */}
       {reassignDoc && <ReassignModal doc={reassignDoc} currentUserName={data?.currentUserName || ''} onClose={() => setReassignDoc(null)} onSuccess={() => refetch()} />}
       {cancelDoc && <CancelModal doc={cancelDoc} onClose={() => setCancelDoc(null)} onSuccess={() => refetch()} />}
       {reRouteDoc && <ReRouteModal doc={reRouteDoc} currentUserName={data?.currentUserName || ''} currentUserId={data?.currentUserId || ''} departments={departments} colleagues={availableColleagues} onClose={() => setReRouteDoc(null)} onSuccess={() => refetch()} />}
@@ -411,11 +410,9 @@ export default function Processing() {
       {trailDoc && <DigitalTrailModal doc={trailDoc} onBack={() => setTrailDoc(null)} />}
       {previewDocUrl && <FilePreviewModal url={previewDocUrl} onClose={() => setPreviewDocUrl(null)} />}
       
-      {/* THE HANDSHAKE MODALS */}
       {declineDoc && <DeclineModal doc={declineDoc} currentUserName={data?.currentUserName || ''} onClose={() => setDeclineDoc(null)} onSuccess={() => refetch()} />}
       {receiveDoc && <ReceiveModal doc={receiveDoc} currentUserDept={data?.currentUserDept || ''} currentUserName={data?.currentUserName || ''} onClose={() => setReceiveDoc(null)} onSuccess={() => refetch()} />}
     
-      {/* --- LINKED DOCUMENTS MODAL --- */}
       {isLinkedModalOpen && linkedTargetRef && (
         <LinkedDocumentsModal
             isOpen={isLinkedModalOpen}
@@ -427,10 +424,6 @@ export default function Processing() {
     </div>
   );
 }
-
-// ==========================================
-// INLINE HELPERS & MODALS
-// ==========================================
 
 function TabButton({ label, icon, count, isActive, onClick, colorClass, badgeClass, newCount = 0 }: { label: string, icon: React.ReactNode, count: number, isActive: boolean, onClick: () => void, colorClass: string, badgeClass: string, newCount?: number }) {
     return (
@@ -445,9 +438,6 @@ function TabButton({ label, icon, count, isActive, onClick, colorClass, badgeCla
     );
 }
 
-// ==========================================
-// RECEIVE CONFIRMATION MODAL (RPC IMPLEMENTATION)
-// ==========================================
 interface ReceiveModalProps {
     doc: DocumentItem;
     currentUserDept: string;
@@ -535,9 +525,6 @@ function ReceiveModal({ doc, currentUserDept, currentUserName, onClose, onSucces
     );
 }
 
-// ==========================================
-// DECLINE MODAL COMPONENT (RPC IMPLEMENTATION)
-// ==========================================
 interface DeclineModalProps {
     doc: DocumentItem;
     currentUserName: string;
