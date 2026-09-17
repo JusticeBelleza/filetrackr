@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 interface Department {
     id: string;
     name: string;
+    prefix?: string;
 }
 
 interface DepartmentSelectProps {
@@ -34,20 +35,23 @@ export default function DepartmentSelect({ value, onChange, isRelative = false }
 
             let query = supabase
                 .from('departments')
-                .select('id, name', { count: 'exact' })
+                .select('id, name, prefix', { count: 'exact' })
                 .order('name', { ascending: true })
                 .range(from, to);
 
-            if (search) query = query.ilike('name', `%${search}%`);
+            if (search) {
+                // Search both name AND prefix simultaneously in the background
+                query = query.or(`name.ilike.%${search}%,prefix.ilike.%${search}%`);
+            }
 
             const { data, count, error } = await query;
             if (error) throw error;
 
             if (data) {
                 setDepartments(prev => {
-                    if (isNewSearch) return data;
+                    if (isNewSearch) return data as Department[];
                     const existingIds = new Set(prev.map(d => d.id));
-                    const uniqueNewData = data.filter(d => !existingIds.has(d.id));
+                    const uniqueNewData = (data as Department[]).filter(d => !existingIds.has(d.id));
                     return [...prev, ...uniqueNewData];
                 });
                 setHasMore(count !== null && (from + data.length) < count);
@@ -114,10 +118,10 @@ export default function DepartmentSelect({ value, onChange, isRelative = false }
                     isOpen ? 'border-blue-500 ring-4 ring-blue-500/20' : 'border-slate-200 hover:border-slate-300'
                 }`}
             >
-                <span className={value ? 'text-slate-900 font-bold' : 'text-slate-400 font-medium'}>
+                <span className={value ? 'text-slate-900 font-bold truncate' : 'text-slate-400 font-medium truncate'}>
                     {value || 'Select Office...'}
                 </span>
-                <ChevronDown size={18} className={`text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown size={18} className={`text-slate-400 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
             </button>
 
             <div 
@@ -132,7 +136,7 @@ export default function DepartmentSelect({ value, onChange, isRelative = false }
                             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                             <input
                                 type="text"
-                                placeholder="Type to search..."
+                                placeholder="Search by acronym (e.g., PHO) or name..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
@@ -163,7 +167,7 @@ export default function DepartmentSelect({ value, onChange, isRelative = false }
                                                 : 'hover:bg-slate-50 border border-transparent'
                                         }`}
                                     >
-                                        <span className={`text-sm ${isSelected ? 'font-black text-blue-700' : 'font-bold text-slate-700'}`}>
+                                        <span className={`text-sm truncate ${isSelected ? 'font-black text-blue-700' : 'font-bold text-slate-700'}`}>
                                             {dept.name}
                                         </span>
                                         {isSelected && <Check size={18} className="text-blue-600 shrink-0 ml-2" strokeWidth={3} />}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
     Activity, ArrowRight, CheckCircle2, Plus,
@@ -261,13 +261,17 @@ export default function Dashboard() {
       }
   });
 
-  const filteredDepts = departmentsData.filter((dept: Record<string, unknown>) => {
-      const name = typeof dept.name === 'string' ? dept.name.toLowerCase() : '';
-      const address = typeof dept.office_address === 'string' ? dept.office_address.toLowerCase() : '';
-      const head = typeof dept.department_head === 'string' ? dept.department_head.toLowerCase() : '';
-      const term = dirSearch.toLowerCase();
-      return name.includes(term) || address.includes(term) || head.includes(term);
-  });
+  const filteredDepts = useMemo(() => {
+      return departmentsData.filter((dept: Record<string, unknown>) => {
+          const name = typeof dept.name === 'string' ? dept.name.toLowerCase() : '';
+          const address = typeof dept.office_address === 'string' ? dept.office_address.toLowerCase() : '';
+          const head = typeof dept.department_head === 'string' ? dept.department_head.toLowerCase() : '';
+          const prefix = typeof dept.prefix === 'string' ? dept.prefix.toLowerCase() : ''; 
+          const term = dirSearch.toLowerCase();
+
+          return name.includes(term) || address.includes(term) || head.includes(term) || prefix.includes(term);
+      });
+  }, [departmentsData, dirSearch]);
   
   const totalDirPages = Math.ceil(filteredDepts.length / DIR_PER_PAGE);
   const paginatedDepts = filteredDepts.slice((dirPage - 1) * DIR_PER_PAGE, dirPage * DIR_PER_PAGE);
@@ -462,7 +466,7 @@ export default function Dashboard() {
           </div>
       </div>
 
-      {/* --- 4. DEPARTMENT DIRECTORY (OFFICES WITH TEXT & ICON-ONLY ACTIONS) --- */}
+      {/* --- 4. DEPARTMENT DIRECTORY (LEFT-ALIGNED ACTION ICONS) --- */}
       <div className="bg-white border border-slate-200 rounded-[1.5rem] shadow-sm overflow-hidden flex flex-col">
           <button 
               onClick={() => setIsDirOpen(!isDirOpen)}
@@ -492,7 +496,7 @@ export default function Dashboard() {
                           type="text" 
                           value={dirSearch}
                           onChange={(e) => { setDirSearch(e.target.value); setDirPage(1); }}
-                          placeholder="Search offices, address, or head..." 
+                          placeholder="Search offices, acronym, address, or head..." 
                           className="w-full pl-10 pr-4 py-2.5 rounded-xl border-2 border-slate-100 focus:border-indigo-500 outline-none text-sm font-bold text-slate-800 placeholder:text-slate-400 bg-slate-50 focus:bg-white transition-all shadow-sm"
                       />
                   </div>
@@ -503,7 +507,7 @@ export default function Dashboard() {
                           <p className="text-center py-6 text-sm text-slate-400 font-bold italic border-2 border-dashed border-slate-100 rounded-xl">No offices found.</p>
                       ) : (
                           paginatedDepts.map((dept: Record<string, unknown>) => (
-                              <div key={dept.id as string} className="border-2 border-slate-200 rounded-2xl p-4 bg-white shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                              <div key={dept.id as string} className="border-2 border-slate-200 rounded-2xl p-4 bg-white shadow-sm flex flex-col gap-3 hover:border-slate-300 transition-colors">
                                   
                                   {/* Department Text Details */}
                                   <div className="flex flex-col gap-1 flex-1 min-w-0">
@@ -516,34 +520,36 @@ export default function Dashboard() {
                                       </span>
 
                                       {Boolean(dept.department_head) && (
-                                          <span className="text-xs font-medium text-slate-600 flex items-start gap-1.5 break-words">
+                                          <span className="text-xs font-medium text-slate-600 flex items-start gap-1.5 break-words mt-0.5">
                                               <Users size={13} className="text-slate-400 shrink-0 mt-0.5" />
                                               Head: {dept.department_head as string}
                                           </span>
                                       )}
                                   </div>
 
-                                  {/* Icon-Only Action Buttons */}
-                                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                                      {Boolean(dept.contact_number) && (
-                                          <a 
-                                              href={`tel:${dept.contact_number as string}`} 
-                                              className="w-[40px] h-[40px] flex items-center justify-center bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 active:scale-90 transition-all border border-emerald-200 shadow-sm"
-                                              title={`Call: ${dept.contact_number as string}`}
-                                          >
-                                              <Phone size={18} strokeWidth={2.5} />
-                                          </a>
-                                      )}
-                                      {Boolean(dept.email_address) && (
-                                          <a 
-                                              href={`mailto:${dept.email_address as string}`} 
-                                              className="w-[40px] h-[40px] flex items-center justify-center bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 active:scale-90 transition-all border border-blue-200 shadow-sm"
-                                              title={`Email: ${dept.email_address as string}`}
-                                          >
-                                              <Mail size={18} strokeWidth={2.5} />
-                                          </a>
-                                      )}
-                                  </div>
+                                  {/* Bottom Action Buttons (Left Aligned, Rendered only if info exists) */}
+                                  {(Boolean(dept.contact_number) || Boolean(dept.email_address)) && (
+                                      <div className="flex items-center gap-2 pt-2 mt-1 border-t border-slate-50">
+                                          {Boolean(dept.contact_number) && (
+                                              <a 
+                                                  href={`tel:${dept.contact_number as string}`} 
+                                                  className="w-8 h-8 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 active:scale-95 transition-all border border-emerald-200 shadow-sm"
+                                                  title={`Call: ${dept.contact_number as string}`}
+                                              >
+                                                  <Phone size={14} strokeWidth={2.5} />
+                                              </a>
+                                          )}
+                                          {Boolean(dept.email_address) && (
+                                              <a 
+                                                  href={`mailto:${dept.email_address as string}`} 
+                                                  className="w-8 h-8 flex items-center justify-center bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 active:scale-95 transition-all border border-blue-200 shadow-sm"
+                                                  title={`Email: ${dept.email_address as string}`}
+                                              >
+                                                  <Mail size={14} strokeWidth={2.5} />
+                                              </a>
+                                          )}
+                                      </div>
+                                  )}
                               </div>
                           ))
                       )}

@@ -32,7 +32,7 @@ const modalAnimationStyles = `
 
     @media (min-width: 640px) {
         .animate-responsive-modal { animation: desktopZoomIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        .animate-responsive-modal-close { animation: desktopZoomOut 0.3s cubic-bezier(0.3, 0, 0.8, 0.15) forwards; }
+        .animate-responsive-modal-close { animation: desktopZoomOut 0.15s cubic-bezier(0.3, 0, 0.8, 0.15) forwards; }
     }
 `;
 
@@ -78,6 +78,7 @@ interface DepartmentItem {
     department_head?: string;
     email_address?: string;
     contact_number?: string;
+    prefix?: string;
 }
 
 interface CategoryItem {
@@ -103,7 +104,7 @@ export default function SystemAdmin() {
   // --- LOCAL FORM STATES ---
   const [globalSettings, setGlobalSettings] = useState({ maintenanceMode: false, sessionTimeout: '30' });
   
-  // UPDATED: Office State with Rich Metadata
+  // Office State
   const [newOffice, setNewOffice] = useState({ 
       id: '', 
       office_id: '', 
@@ -111,12 +112,14 @@ export default function SystemAdmin() {
       office_address: '',
       department_head: '',
       email_address: '',
-      contact_number: ''
+      contact_number: '',
+      prefix: ''
   });
   const [isEditingOffice, setIsEditingOffice] = useState(false);
   
-  // UPDATED: Category State with Prefix
-  const [newCat, setNewCat] = useState({ category_id: '', name: '', prefix: '' });
+  // UPDATED: Category State (Added ID for Editing)
+  const [newCat, setNewCat] = useState({ id: '', category_id: '', name: '', prefix: '' });
+  const [isEditingCat, setIsEditingCat] = useState(false);
   
   const [newEmp, setNewEmp] = useState({ 
       emp_id: '', name: '', email: '', designation: '', 
@@ -131,7 +134,6 @@ export default function SystemAdmin() {
   const [expandedDepts, setExpandedDepts] = useState<Record<string, boolean>>({});
   const [folderPages, setFolderPages] = useState<Record<string, number>>({});
   
-  // NEW: Office Pagination
   const [deptPage, setDeptPage] = useState(1);
   const deptsPerPage = 6;
 
@@ -213,7 +215,6 @@ export default function SystemAdmin() {
     }
   });
 
-  // Sync settings when fetched
   useEffect(() => {
     if (adminData?.settings) {
       setGlobalSettings({
@@ -228,6 +229,22 @@ export default function SystemAdmin() {
   const categories = useMemo(() => adminData?.categories || [], [adminData?.categories]);
   const employees = useMemo(() => adminData?.employees || [], [adminData?.employees]);
   const auditLogs = useMemo(() => adminData?.auditLogs || [], [adminData?.auditLogs]);
+
+  // --- SMART REAL-TIME DUPLICATE PREFIX DETECTION ---
+  const duplicateCategoryPrefix = useMemo(() => {
+      const trimmed = newCat.prefix.trim().toUpperCase();
+      if (!trimmed) return null;
+      // Added `cat.id !== newCat.id` to prevent it from flagging itself while editing
+      const conflict = categories.find(cat => cat.prefix && cat.prefix.toUpperCase() === trimmed && cat.id !== newCat.id);
+      return conflict ? conflict.name : null;
+  }, [newCat.prefix, newCat.id, categories]);
+
+  const duplicateOfficePrefix = useMemo(() => {
+      const trimmed = newOffice.prefix.trim().toUpperCase();
+      if (!trimmed) return null;
+      const conflict = departments.find(dept => dept.prefix && dept.prefix.toUpperCase() === trimmed && dept.id !== newOffice.id);
+      return conflict ? conflict.name : null;
+  }, [newOffice.prefix, newOffice.id, departments]);
 
   // --- Department Pagination Logic ---
   const totalDeptPages = Math.ceil(departments.length / deptsPerPage);
@@ -282,7 +299,8 @@ export default function SystemAdmin() {
           office_address: '',
           department_head: '',
           email_address: '',
-          contact_number: ''
+          contact_number: '',
+          prefix: ''
       });
       setIsDeptModalOpen(true);
   };
@@ -296,7 +314,8 @@ export default function SystemAdmin() {
           office_address: dept.office_address || '',
           department_head: dept.department_head || '',
           email_address: dept.email_address || '',
-          contact_number: dept.contact_number || ''
+          contact_number: dept.contact_number || '',
+          prefix: dept.prefix || ''
       });
       setIsDeptModalOpen(true);
   };
@@ -306,7 +325,20 @@ export default function SystemAdmin() {
       window.crypto.getRandomValues(randomArray);
       const randomNum = 1000 + (randomArray[0] % 9000);
       
-      setNewCat({ category_id: `CAT-${randomNum}`, name: '', prefix: '' });
+      setIsEditingCat(false);
+      setNewCat({ id: '', category_id: `CAT-${randomNum}`, name: '', prefix: '' });
+      setIsCatModalOpen(true);
+  };
+
+  // NEW: Open Category Edit Modal
+  const openEditCatModal = (cat: CategoryItem) => {
+      setIsEditingCat(true);
+      setNewCat({
+          id: cat.id,
+          category_id: cat.category_id || 'CAT-LEGACY',
+          name: cat.name,
+          prefix: cat.prefix || ''
+      });
       setIsCatModalOpen(true);
   };
 
@@ -336,7 +368,7 @@ export default function SystemAdmin() {
       queryClient.invalidateQueries({ queryKey: ['adminData'] }); 
   };
 
-  // Departments Handlers (Supports Add and Edit)
+  // Departments Handlers
   const handleAddDepartment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newOffice.office_name.trim() || !newOffice.office_address.trim()) {
@@ -344,13 +376,19 @@ export default function SystemAdmin() {
         return;
     }
     
+    if (duplicateOfficePrefix) {
+        toast.error('Acronym Conflict', { description: `The acronym ${newOffice.prefix.trim().toUpperCase()} is already in use.`});
+        return;
+    }
+
     const payload = {
         name: newOffice.office_name.trim(),
         office_id: newOffice.office_id,
         office_address: newOffice.office_address.trim(),
         department_head: newOffice.department_head.trim() || null,
         email_address: newOffice.email_address.trim() || null,
-        contact_number: newOffice.contact_number.trim() || null
+        contact_number: newOffice.contact_number.trim() || null,
+        prefix: newOffice.prefix.trim().toUpperCase() || null
     };
 
     let error;
@@ -384,44 +422,38 @@ export default function SystemAdmin() {
       closeDeleteModal();
   };
 
-  // Categories Handlers (With Smart Duplicate Prefix Validation)
+  // Categories Handlers (Supports Add and Edit)
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCat.name.trim()) { toast.error('Please provide a category name.'); return; }
     
-    const trimmedPrefix = newCat.prefix ? newCat.prefix.trim().toUpperCase() : null;
-
-    // --- SMART DUPLICATE PREFIX CHECK ---
-    if (trimmedPrefix) {
-        const isDuplicate = categories.some(
-            cat => cat.prefix && cat.prefix.toUpperCase() === trimmedPrefix
-        );
-
-        if (isDuplicate) {
-            const conflictingCat = categories.find(
-                cat => cat.prefix && cat.prefix.toUpperCase() === trimmedPrefix
-            );
-            toast.error('Duplicate Prefix Detected!', {
-                description: `The prefix "${trimmedPrefix}" is already in use by "${conflictingCat?.name}". Please choose a unique acronym.`
-            });
-            return; 
-        }
+    if (duplicateCategoryPrefix) {
+        toast.error('Prefix Conflict', { description: `The prefix is already in use by ${duplicateCategoryPrefix}.`});
+        return;
     }
     
+    const trimmedPrefix = newCat.prefix ? newCat.prefix.trim().toUpperCase() : null;
     const payload = {
         name: newCat.name.trim(),
         category_id: newCat.category_id,
         prefix: trimmedPrefix
     };
 
-    const { error } = await supabase.from('categories').insert([payload]);
+    let error;
+    if (isEditingCat) {
+        const res = await supabase.from('categories').update(payload).eq('id', newCat.id);
+        error = res.error;
+    } else {
+        const res = await supabase.from('categories').insert([payload]);
+        error = res.error;
+    }
 
-    if (error) { toast.error('Failed to add category'); return; }
+    if (error) { toast.error(`Failed to ${isEditingCat ? 'update' : 'add'} category`); return; }
     
     queryClient.invalidateQueries({ queryKey: ['adminData'] });
     closeCatModal(); 
-    toast.success('Category added successfully');
-    logAuditAction(`Added new category: ${newCat.name.trim()} (${trimmedPrefix || 'No Prefix'})`);
+    toast.success(`Category ${isEditingCat ? 'updated' : 'added'} successfully`);
+    logAuditAction(`${isEditingCat ? 'Updated' : 'Added new'} category: ${newCat.name.trim()} (${trimmedPrefix || 'No Prefix'})`);
   };
 
   const confirmDeleteCategory = async () => {
@@ -653,7 +685,14 @@ export default function SystemAdmin() {
                                     <div className="flex flex-col gap-1 flex-1 min-w-0">
                                         <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest">{dept.office_id || 'OFC-LEGACY'}</span>
                                         <h4 className="font-black text-slate-900 text-sm sm:text-base leading-tight break-words">{dept.name}</h4>
-                                        <span className="text-[11px] sm:text-xs font-medium text-slate-500 flex items-start gap-1.5 break-words mt-0.5">
+                                        
+                                        {dept.prefix && (
+                                            <span className="text-[11px] font-bold text-blue-600 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded w-fit mt-1">
+                                                Acronym: {dept.prefix}
+                                            </span>
+                                        )}
+                                        
+                                        <span className="text-[11px] sm:text-xs font-medium text-slate-500 flex items-start gap-1.5 break-words mt-1.5">
                                             <MapPin size={12} className="text-slate-400 shrink-0 mt-0.5" />
                                             {dept.office_address || 'No address provided'}
                                         </span>
@@ -735,13 +774,22 @@ export default function SystemAdmin() {
                                             </span>
                                         )}
                                     </div>
-                                    <button 
-                                        onClick={() => setDeleteCatConfirm({ id: cat.id, name: cat.name })} 
-                                        className="p-2 sm:p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 bg-white rounded-xl transition-all shrink-0 border-2 border-slate-200 hover:border-red-200 active:scale-95 shadow-sm mt-1 sm:mt-0"
-                                        title="Remove Category"
-                                    >
-                                        <Trash2 size={18} className="w-4 h-4 sm:w-5 sm:h-5" />
-                                    </button>
+                                    <div className="flex items-center gap-2 mt-2 sm:mt-0">
+                                        <button 
+                                            onClick={() => openEditCatModal(cat)} 
+                                            className="p-2 sm:p-2.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 bg-white rounded-xl transition-all shrink-0 border-2 border-slate-200 hover:border-blue-200 active:scale-95 shadow-sm"
+                                            title="Edit Category"
+                                        >
+                                            <Edit size={18} className="w-4 h-4 sm:w-5 sm:h-5" />
+                                        </button>
+                                        <button 
+                                            onClick={() => setDeleteCatConfirm({ id: cat.id, name: cat.name })} 
+                                            className="p-2 sm:p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 bg-white rounded-xl transition-all shrink-0 border-2 border-slate-200 hover:border-red-200 active:scale-95 shadow-sm"
+                                            title="Remove Category"
+                                        >
+                                            <Trash2 size={18} className="w-4 h-4 sm:w-5 sm:h-5" />
+                                        </button>
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -985,17 +1033,34 @@ export default function SystemAdmin() {
                  <Hash className="text-blue-500" size={24} />
               </div>
 
-              <div>
-                <label className="block text-sm font-bold text-slate-900 mb-1.5">Office Name *</label>
-                <input 
-                  type="text" 
-                  value={newOffice.office_name} 
-                  onChange={(e) => setNewOffice({...newOffice, office_name: e.target.value})} 
-                  placeholder="e.g. Provincial Engineering Office" 
-                  className="w-full p-3.5 bg-slate-50 border-2 border-slate-400 rounded-xl focus:border-slate-900 outline-none font-bold text-slate-900 text-base" 
-                  autoFocus 
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="sm:col-span-2">
+                      <label className="block text-sm font-bold text-slate-900 mb-1.5">Office Name *</label>
+                      <input 
+                        type="text" 
+                        value={newOffice.office_name} 
+                        onChange={(e) => setNewOffice({...newOffice, office_name: e.target.value})} 
+                        placeholder="e.g. Provincial Engineering Office" 
+                        className="w-full p-3.5 bg-slate-50 border-2 border-slate-400 rounded-xl focus:border-slate-900 outline-none font-bold text-slate-900 text-base" 
+                        autoFocus 
+                      />
+                  </div>
+                  <div className="sm:col-span-1">
+                      <label className="block text-sm font-bold text-slate-900 mb-1.5">Acronym</label>
+                      <input 
+                          type="text" 
+                          value={newOffice.prefix} 
+                          onChange={(e) => setNewOffice({...newOffice, prefix: e.target.value.toUpperCase()})} 
+                          placeholder="e.g. PHO" 
+                          className={`w-full p-3.5 bg-slate-50 border-2 rounded-xl outline-none font-bold text-slate-900 text-base transition-colors ${duplicateOfficePrefix ? 'border-rose-500 focus:border-rose-500 text-rose-900 bg-rose-50' : 'border-slate-200 focus:border-slate-900'}`} 
+                      />
+                  </div>
               </div>
+              {duplicateOfficePrefix && (
+                  <p className="text-xs font-bold text-rose-600 -mt-2 flex items-center gap-1.5 animate-in fade-in">
+                      <AlertTriangle size={14} /> Acronym in use by "{duplicateOfficePrefix}".
+                  </p>
+              )}
 
               <div>
                 <label className="block text-sm font-bold text-slate-900 mb-1.5 flex items-center gap-1.5"><MapPin size={16} /> Office Address *</label>
@@ -1043,7 +1108,11 @@ export default function SystemAdmin() {
 
               <div className="pt-4 flex gap-3 shrink-0">
                 <button type="button" onClick={closeDeptModal} className="flex-1 py-3.5 bg-white border-2 border-slate-300 text-slate-700 font-bold rounded-xl active:scale-95 transition-transform text-base">Cancel</button>
-                <button type="submit" className="flex-[1.5] py-3.5 bg-slate-900 text-white font-bold rounded-xl border-2 border-slate-900 active:scale-95 transition-transform text-base">
+                <button 
+                  type="submit" 
+                  disabled={!!duplicateOfficePrefix}
+                  className="flex-[1.5] py-3.5 bg-slate-900 text-white font-bold rounded-xl border-2 border-slate-900 active:scale-95 transition-transform text-base disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                     {isEditingOffice ? 'Save Changes' : 'Register Office'}
                 </button>
               </div>
@@ -1078,7 +1147,7 @@ export default function SystemAdmin() {
         <div className={`fixed inset-0 z-[999] flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/50 backdrop-blur-sm ${isClosingCat ? 'animate-overlay-fade-out' : 'animate-overlay-fade'}`}>
           <div className={`bg-white w-full max-w-lg rounded-t-[1.5rem] sm:rounded-2xl shadow-2xl overflow-hidden ${isClosingCat ? 'animate-responsive-modal-close' : 'animate-responsive-modal'}`}>
             <div className="bg-slate-900 text-white p-5 flex items-center justify-between">
-              <h3 className="font-black text-xl">Add Document Category</h3>
+              <h3 className="font-black text-xl">{isEditingCat ? 'Edit Document Category' : 'Add Document Category'}</h3>
               <button onClick={closeCatModal} className="p-2 bg-white/10 hover:bg-white/20 rounded-full"><X size={20} /></button>
             </div>
             <form onSubmit={handleAddCategory} className="p-6 space-y-5">
@@ -1103,7 +1172,7 @@ export default function SystemAdmin() {
                 />
               </div>
 
-              {/* NEW CATEGORY PREFIX INPUT */}
+              {/* CATEGORY PREFIX INPUT (WITH VALIDATION) */}
               <div>
                 <label className="block text-sm font-bold text-slate-900 mb-1.5">Category Acronym / Prefix (Optional)</label>
                 <input 
@@ -1111,14 +1180,26 @@ export default function SystemAdmin() {
                   value={newCat.prefix} 
                   onChange={(e) => setNewCat({...newCat, prefix: e.target.value.toUpperCase()})} 
                   placeholder="e.g. PR" 
-                  className="w-full p-3.5 bg-slate-50 border-2 border-slate-200 focus:border-slate-900 rounded-xl outline-none font-bold text-slate-900 text-base transition-colors" 
+                  className={`w-full p-3.5 bg-slate-50 border-2 rounded-xl outline-none font-bold text-slate-900 text-base transition-colors ${duplicateCategoryPrefix ? 'border-rose-500 focus:border-rose-500 text-rose-900 bg-rose-50' : 'border-slate-200 focus:border-slate-900'}`} 
                 />
-                <p className="text-xs text-slate-500 font-bold mt-2">This is used to automatically generate tracking numbers (e.g. PR-2026-1234).</p>
+                {duplicateCategoryPrefix ? (
+                    <p className="text-xs font-bold text-rose-600 mt-2 flex items-center gap-1.5 animate-in fade-in">
+                        <AlertTriangle size={14} /> Prefix in use by "{duplicateCategoryPrefix}".
+                    </p>
+                ) : (
+                    <p className="text-xs text-slate-500 font-bold mt-2">This is used to automatically generate tracking numbers (e.g. PR-2026-1234).</p>
+                )}
               </div>
 
               <div className="pt-4 flex gap-3 shrink-0">
                 <button type="button" onClick={closeCatModal} className="flex-1 py-3.5 bg-white border-2 border-slate-300 text-slate-700 font-bold rounded-xl active:scale-95 transition-transform text-base">Cancel</button>
-                <button type="submit" className="flex-[1.5] py-3.5 bg-slate-900 text-white font-bold rounded-xl border-2 border-slate-900 active:scale-95 transition-transform text-base">Save Category</button>
+                <button 
+                  type="submit" 
+                  disabled={!!duplicateCategoryPrefix}
+                  className="flex-[1.5] py-3.5 bg-slate-900 text-white font-bold rounded-xl border-2 border-slate-900 active:scale-95 transition-transform text-base disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isEditingCat ? 'Save Changes' : 'Save Category'}
+                </button>
               </div>
             </form>
           </div>

@@ -5,12 +5,12 @@ import { supabase } from '../../lib/supabase';
 interface Category {
     id: string;
     name: string;
-    prefix?: string | null; // <-- NEW: Added Prefix
+    prefix?: string | null;
 }
 
 interface CategorySelectProps {
     value: string;
-    onChange: (categoryName: string, prefix?: string | null) => void; // <-- NEW: Now passes prefix back up
+    onChange: (categoryName: string, prefix?: string | null) => void;
     isRelative?: boolean;
 }
 
@@ -33,26 +33,39 @@ export default function CategorySelect({ value, onChange, isRelative = false }: 
             const from = currentPage * ITEMS_PER_PAGE;
             const to = from + ITEMS_PER_PAGE - 1;
 
-            // NEW: Added 'prefix' to the select query
             let query = supabase
                 .from('categories')
-                .select('id, name, prefix', { count: 'exact' })
+                .select('id, name, prefix')
                 .order('name', { ascending: true })
                 .range(from, to);
 
-            if (search) query = query.ilike('name', `%${search}%`);
+            if (search) {
+                // Smarter search: Matches if the prefix starts with the term, 
+                // OR if any word in the name starts with the term (fixes the "po" issue)
+                query = query.or(`prefix.ilike.${search}%,name.ilike.${search}%,name.ilike.% ${search}%`);
+            }
 
-            const { data, count, error } = await query;
-            if (error) throw error;
+            const { data, error } = await query;
+            
+            if (error) {
+                // Gracefully catch Supabase's "Range Not Satisfiable" error for small tables
+                if (error.code === 'PGRST103') {
+                    setHasMore(false);
+                    return;
+                }
+                throw error;
+            }
 
             if (data) {
                 setCategories(prev => {
-                    if (isNewSearch) return data;
+                    if (isNewSearch) return data as Category[];
                     const existingIds = new Set(prev.map(c => c.id));
-                    const uniqueNewData = data.filter(c => !existingIds.has(c.id));
+                    const uniqueNewData = (data as Category[]).filter(c => !existingIds.has(c.id));
                     return [...prev, ...uniqueNewData];
                 });
-                setHasMore(count !== null && (from + data.length) < count);
+                
+                // If we get fewer items than requested, we've hit the end of the list
+                setHasMore(data.length === ITEMS_PER_PAGE);
             }
         } catch (error) {
             console.error("Error fetching categories:", error);
@@ -104,8 +117,9 @@ export default function CategorySelect({ value, onChange, isRelative = false }: 
 
     return (
         <div className="relative w-full" ref={dropdownRef}>
-            <label className="block text-[11px] sm:text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5 uppercase tracking-wider">
-                <FolderOpen size={14} className="text-orange-500" /> Document Category <span className="text-red-500">*</span>
+            <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                <FolderOpen size={14} className="text-orange-500" /> 
+                Document Category <span className="text-red-500">*</span>
             </label>
 
             <button
@@ -133,17 +147,17 @@ export default function CategorySelect({ value, onChange, isRelative = false }: 
                             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                             <input
                                 type="text"
-                                placeholder="Type to search..."
+                                placeholder="Search by acronym (e.g. PR) or name..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full pl-9 pr-4 py-2.5 bg-white border-2 border-slate-200 rounded-xl text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all"
+                                className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all"
                             />
                         </div>
                     </div>
 
                     <div className="max-h-[230px] overflow-y-auto custom-scrollbar p-1.5">
                         {categories.length === 0 && !isLoading ? (
-                            <div className="p-4 text-center text-slate-500 text-sm font-medium">No categories found.</div>
+                            <div className="p-4 text-center text-slate-500 text-sm">No categories found.</div>
                         ) : (
                             categories.map((cat, index) => {
                                 const isSelected = value === cat.name;
@@ -154,7 +168,7 @@ export default function CategorySelect({ value, onChange, isRelative = false }: 
                                         key={`${cat.id}-${index}`}
                                         ref={isLastElement ? lastCategoryElementRef : null}
                                         onClick={() => {
-                                            // NEW: We now pass BOTH the name and the prefix up!
+                                            // Pass both name and prefix to the parent component
                                             onChange(cat.name, cat.prefix);
                                             setIsOpen(false);
                                             setSearchTerm('');
