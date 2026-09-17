@@ -1,6 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, X, Activity, CornerUpLeft, RefreshCw, CheckCircle, MapPin, Layers, Ban, AlertCircle, Zap, Link as LinkIcon } from 'lucide-react';
+import { 
+    Search, X, Activity, CornerUpLeft, RefreshCw, CheckCircle, MapPin, Layers, Ban, AlertCircle, Zap, Link as LinkIcon, Handshake 
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '../lib/supabase';
 import type { ProcessingData, DocumentItem } from '../types/processing';
@@ -73,6 +75,10 @@ export default function Processing() {
   
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
   const [selectedDocs, setSelectedDocs] = useState<DocumentItem[]>([]);
+  
+  // --- Lazy Loading States ---
+  const [visibleReturned, setVisibleReturned] = useState(12);
+  const [expandedClerkLimits, setExpandedClerkLimits] = useState<Record<string, number>>({});
   
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
   const [isBatchMenuClosing, setIsBatchMenuClosing] = useState(false);
@@ -175,6 +181,10 @@ export default function Processing() {
       setSelectedDocs([]); 
       setIsBatchModalOpen(false); 
       setIsBatchMenuClosing(false);
+      
+      // Reset lazy load limits when navigating/searching
+      setVisibleReturned(12);
+      setExpandedClerkLimits({});
   }, [activeTab, searchQuery]);
 
   const newProcessingCount = useMemo(() => documents.processing.filter((d: DocumentItem) => new Date(d.updated_at || d.created_at).getTime() > Number(lastViewedProcessing)).length, [documents.processing, lastViewedProcessing]);
@@ -256,7 +266,7 @@ export default function Processing() {
                   </div>
                   <div className="flex items-center gap-1.5">
                       <div className="w-[18px] h-[18px] flex items-center justify-center bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-[4px] shadow-sm">
-                          <CheckCircle size={11} strokeWidth={2.5}/>
+                          <Handshake size={11} strokeWidth={2.5}/>
                       </div>
                       <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Received</span>
                   </div>
@@ -298,69 +308,97 @@ export default function Processing() {
                           </div>
                           
                           <div className="space-y-6 pl-1 sm:pl-2">
-                              {clerks.map(([clerkName, clerkDocs]) => (
-                                  <div key={clerkName} className="space-y-3">
-                                      <div className="flex items-center gap-2 pl-1">
-                                          <span className="text-[10px] font-bold text-slate-400">({clerkDocs.length}) managed by {clerkName}</span>
-                                          <div className="h-px bg-slate-200/80 flex-1"></div>
-                                      </div>
+                              {clerks.map(([clerkName, clerkDocs]) => {
+                                  const displayLimit = expandedClerkLimits[clerkName] || 6;
+                                  const visibleDocs = clerkDocs.slice(0, displayLimit);
+                                  const hasMore = clerkDocs.length > displayLimit;
 
-                                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                                          {clerkDocs.map(doc => (
-                                              <DocumentCard 
-                                                  key={doc.id} doc={doc} activeTab={activeTab} isSelected={selectedDocs.some(d => d.id === doc.id)}
-                                                  isExpanded={!!expandedCards[doc.id]} showCheckbox={clerkDocCounts[doc.assigned_clerk || 'Unassigned'] > 1 && (!selectedDocs.length || selectedDocs[0].assigned_clerk === (doc.assigned_clerk || 'Unassigned'))}
-                                                  currentUserName={data?.currentUserName || ''} currentUserId={data?.currentUserId || ''}
-                                                  onToggleSelection={(d: DocumentItem) => setSelectedDocs((prev: DocumentItem[]) => prev.some((x: DocumentItem) => x.id === d.id) ? prev.filter((x: DocumentItem) => x.id !== d.id) : [...prev, d])}
-                                                  onToggleCollapse={(id: string) => setExpandedCards((prev: Record<string, boolean>) => ({...prev, [id]: !prev[id]}))}
-                                                  onPreview={(url: string) => setPreviewDocUrl(url)} onTrack={(d: DocumentItem) => setTrailDoc(d)}
-                                                  onReassign={(d: DocumentItem) => setReassignDoc(d)} 
-                                                  onAction={(d: DocumentItem) => setSelectedDoc(d)}
-                                                  onCancel={(d: DocumentItem) => setCancelDoc(d)}
-                                                  onRevise={(d: DocumentItem) => setReRouteDoc(d)}
-                                                  onReceive={(d: DocumentItem) => setReceiveDoc(d)}
-                                                  onDecline={(d: DocumentItem) => setDeclineDoc(d)}
-                                                  onViewLinked={(d: DocumentItem) => {
-                                                      const targetRef = d.parent_doc_ref || d.reference_no;
-                                                      if (targetRef) {
-                                                          setLinkedTargetRef(targetRef);
-                                                          setIsLinkedModalOpen(true);
-                                                      }
-                                                  }}
-                                              />
-                                          ))}
+                                  return (
+                                      <div key={clerkName} className="space-y-3">
+                                          <div className="flex items-center gap-2 pl-1">
+                                              <span className="text-[10px] font-bold text-slate-400">({clerkDocs.length}) managed by {clerkName}</span>
+                                              <div className="h-px bg-slate-200/80 flex-1"></div>
+                                          </div>
+
+                                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                                              {visibleDocs.map(doc => (
+                                                  <DocumentCard 
+                                                      key={doc.id} doc={doc} activeTab={activeTab} isSelected={selectedDocs.some(d => d.id === doc.id)}
+                                                      isExpanded={!!expandedCards[doc.id]} showCheckbox={clerkDocCounts[doc.assigned_clerk || 'Unassigned'] > 1 && (!selectedDocs.length || selectedDocs[0].assigned_clerk === (doc.assigned_clerk || 'Unassigned'))}
+                                                      currentUserName={data?.currentUserName || ''} currentUserId={data?.currentUserId || ''}
+                                                      onToggleSelection={(d: DocumentItem) => setSelectedDocs((prev: DocumentItem[]) => prev.some((x: DocumentItem) => x.id === d.id) ? prev.filter((x: DocumentItem) => x.id !== d.id) : [...prev, d])}
+                                                      onToggleCollapse={(id: string) => setExpandedCards((prev: Record<string, boolean>) => ({...prev, [id]: !prev[id]}))}
+                                                      onPreview={(url: string) => setPreviewDocUrl(url)} onTrack={(d: DocumentItem) => setTrailDoc(d)}
+                                                      onReassign={(d: DocumentItem) => setReassignDoc(d)} 
+                                                      onAction={(d: DocumentItem) => setSelectedDoc(d)}
+                                                      onCancel={(d: DocumentItem) => setCancelDoc(d)}
+                                                      onRevise={(d: DocumentItem) => setReRouteDoc(d)}
+                                                      onReceive={(d: DocumentItem) => setReceiveDoc(d)}
+                                                      onDecline={(d: DocumentItem) => setDeclineDoc(d)}
+                                                      onViewLinked={(d: DocumentItem) => {
+                                                          const targetRef = d.parent_doc_ref || d.reference_no;
+                                                          if (targetRef) {
+                                                              setLinkedTargetRef(targetRef);
+                                                              setIsLinkedModalOpen(true);
+                                                          }
+                                                      }}
+                                                  />
+                                              ))}
+                                          </div>
+                                          
+                                          {hasMore && (
+                                              <button 
+                                                  onClick={() => setExpandedClerkLimits(prev => ({...prev, [clerkName]: displayLimit + 6}))}
+                                                  className="w-full py-2.5 mt-2 bg-slate-50 hover:bg-slate-100 border border-dashed border-slate-300 text-slate-500 hover:text-slate-700 text-xs font-bold rounded-xl transition-all active:scale-[0.99]"
+                                              >
+                                                  Show {clerkDocs.length - displayLimit} more documents assigned to {clerkName}
+                                              </button>
+                                          )}
                                       </div>
-                                  </div>
-                              ))}
+                                  );
+                              })}
                           </div>
                       </div>
                   ))}
               </div>
           ) : (
               filteredDocs.length > 0 && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                      {filteredDocs.map((doc: DocumentItem) => (
-                          <DocumentCard 
-                              key={doc.id} doc={doc} activeTab={activeTab} isSelected={selectedDocs.some(d => d.id === doc.id)}
-                              isExpanded={!!expandedCards[doc.id]} showCheckbox={clerkDocCounts[doc.assigned_clerk || 'Unassigned'] > 1 && (!selectedDocs.length || selectedDocs[0].assigned_clerk === (doc.assigned_clerk || 'Unassigned'))}
-                              currentUserName={data?.currentUserName || ''} currentUserId={data?.currentUserId || ''}
-                              onToggleSelection={(d: DocumentItem) => setSelectedDocs((prev: DocumentItem[]) => prev.some((x: DocumentItem) => x.id === d.id) ? prev.filter((x: DocumentItem) => x.id !== d.id) : [...prev, d])}
-                              onToggleCollapse={(id: string) => setExpandedCards((prev: Record<string, boolean>) => ({...prev, [id]: !prev[id]}))}
-                              onPreview={(url: string) => setPreviewDocUrl(url)} onTrack={(d: DocumentItem) => setTrailDoc(d)}
-                              onReassign={(d: DocumentItem) => setReassignDoc(d)} 
-                              onCancel={(d: DocumentItem) => setCancelDoc(d)}
-                              onRevise={(d: DocumentItem) => setReRouteDoc(d)}
-                              onReceive={(d: DocumentItem) => setReceiveDoc(d)}
-                              onDecline={(d: DocumentItem) => setDeclineDoc(d)}
-                              onViewLinked={(d: DocumentItem) => {
-                                  const targetRef = d.parent_doc_ref || d.reference_no;
-                                  if (targetRef) {
-                                      setLinkedTargetRef(targetRef);
-                                      setIsLinkedModalOpen(true);
-                                  }
-                              }}
-                          />
-                      ))}
+                  <div className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                          {filteredDocs.slice(0, visibleReturned).map((doc: DocumentItem) => (
+                              <DocumentCard 
+                                  key={doc.id} doc={doc} activeTab={activeTab} isSelected={selectedDocs.some(d => d.id === doc.id)}
+                                  isExpanded={!!expandedCards[doc.id]} showCheckbox={clerkDocCounts[doc.assigned_clerk || 'Unassigned'] > 1 && (!selectedDocs.length || selectedDocs[0].assigned_clerk === (doc.assigned_clerk || 'Unassigned'))}
+                                  currentUserName={data?.currentUserName || ''} currentUserId={data?.currentUserId || ''}
+                                  onToggleSelection={(d: DocumentItem) => setSelectedDocs((prev: DocumentItem[]) => prev.some((x: DocumentItem) => x.id === d.id) ? prev.filter((x: DocumentItem) => x.id !== d.id) : [...prev, d])}
+                                  onToggleCollapse={(id: string) => setExpandedCards((prev: Record<string, boolean>) => ({...prev, [id]: !prev[id]}))}
+                                  onPreview={(url: string) => setPreviewDocUrl(url)} onTrack={(d: DocumentItem) => setTrailDoc(d)}
+                                  onReassign={(d: DocumentItem) => setReassignDoc(d)} 
+                                  onCancel={(d: DocumentItem) => setCancelDoc(d)}
+                                  onRevise={(d: DocumentItem) => setReRouteDoc(d)}
+                                  onReceive={(d: DocumentItem) => setReceiveDoc(d)}
+                                  onDecline={(d: DocumentItem) => setDeclineDoc(d)}
+                                  onViewLinked={(d: DocumentItem) => {
+                                      const targetRef = d.parent_doc_ref || d.reference_no;
+                                      if (targetRef) {
+                                          setLinkedTargetRef(targetRef);
+                                          setIsLinkedModalOpen(true);
+                                      }
+                                  }}
+                              />
+                          ))}
+                      </div>
+                      
+                      {filteredDocs.length > visibleReturned && (
+                          <div className="flex justify-center mt-6">
+                              <button 
+                                  onClick={() => setVisibleReturned(prev => prev + 12)}
+                                  className="px-6 py-3 bg-white border border-slate-300 shadow-sm hover:bg-slate-50 hover:border-slate-400 text-slate-700 text-sm font-bold rounded-xl transition-all active:scale-95"
+                              >
+                                  Load More Documents ({filteredDocs.length - visibleReturned} remaining)
+                              </button>
+                          </div>
+                      )}
                   </div>
               )
           )}
@@ -502,7 +540,7 @@ function ReceiveModal({ doc, currentUserDept, currentUserName, onClose, onSucces
                 
                 <div className="p-6 sm:p-8 space-y-4 bg-white text-center">
                     <div className="mx-auto w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mb-2">
-                        <CheckCircle size={32} className="text-emerald-600" />
+                        <Handshake size={32} className="text-emerald-600" />
                     </div>
                     <h4 className="text-lg font-bold text-slate-900 leading-tight">Confirm Receipt</h4>
                     <p className="text-sm text-slate-600 font-medium">

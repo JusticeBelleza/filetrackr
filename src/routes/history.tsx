@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { 
     Search, MapPin, Clock, CheckCircle, AlertCircle, 
-    Archive, FileText, X, Eye, Ban, ChevronDown, FolderTree, User, RefreshCw, Database, Link as LinkIcon 
+    Archive, FileText, X, Eye, Ban, ChevronDown, User, RefreshCw, Database, Link as LinkIcon, FolderOpen, Check 
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -52,7 +52,7 @@ interface DocumentItem {
     document_logs?: DocumentLog[];
     action_time?: string; 
     parent_doc_ref?: string | null; 
-    has_children?: boolean; // <-- NEW
+    has_children?: boolean; 
 }
 
 interface HistoryData {
@@ -77,7 +77,6 @@ const fetchHistoryData = async (): Promise<HistoryData> => {
     if (!session) throw new Error("No authenticated session");
     const currentUserId = session.user.id;
 
-    // --- NEW: Added a query for parent_doc_ref to flag Mother Docs ---
     const [docsRes, profilesRes, archivedRes, parentRefsRes] = await Promise.all([
         supabase.from('documents')
             .select(`
@@ -120,7 +119,7 @@ const fetchHistoryData = async (): Promise<HistoryData> => {
         const processedDocs = myRelevantDocs.map((doc) => {
             const logs = doc.document_logs || [];
             doc.creator_name = creatorMap[doc.created_by || ''] || 'System User';
-            doc.has_children = parentRefSet.has(doc.reference_no); // <-- Flags Mother Docs
+            doc.has_children = parentRefSet.has(doc.reference_no); 
 
             if (doc.status === 'sealed') {
                 const deliveryLog = logs.filter((l) => l.action === 'Delivered')
@@ -151,7 +150,7 @@ const fetchHistoryData = async (): Promise<HistoryData> => {
         archived = myArchivedDocs.map((doc) => {
             doc.creator_name = creatorMap[doc.created_by || ''] || 'System User';
             doc.action_time = doc.updated_at || doc.created_at; 
-            doc.has_children = parentRefSet.has(doc.reference_no); // <-- Flags Mother Docs
+            doc.has_children = parentRefSet.has(doc.reference_no); 
             return doc;
         }).sort((a, b) => new Date(b.action_time || '').getTime() - new Date(a.action_time || '').getTime());
     }
@@ -349,7 +348,7 @@ export default function History() {
       </div>
 
       {/* Enhanced Search & Compact Refresh Bar */}
-      <div className="flex flex-col gap-4 mb-8">
+      <div className="flex flex-col gap-4 mb-5">
           <div className="flex items-center gap-2 sm:gap-3 w-full">
               <div className="relative flex-1">
                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
@@ -413,6 +412,28 @@ export default function History() {
           </div>
       </div>
 
+      {/* --- LEGENDS SECTION --- */}
+      <div className="flex flex-wrap items-center gap-4 sm:gap-6 px-1 mb-4 border-b border-slate-200/60 pb-4">
+          <div className="flex items-center gap-2">
+              <div className="w-6 h-6 flex items-center justify-center bg-blue-50 text-blue-600 border border-blue-200 rounded-md shadow-sm shrink-0">
+                  <LinkIcon size={14} strokeWidth={3} />
+              </div>
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Linked Document</span>
+          </div>
+          <div className="flex items-center gap-2">
+              <div className="w-6 h-6 flex items-center justify-center bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-md shadow-sm shrink-0">
+                  <Check size={16} strokeWidth={3} />
+              </div>
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Completed</span>
+          </div>
+          <div className="flex items-center gap-2">
+              <div className="w-6 h-6 flex items-center justify-center bg-rose-50 text-rose-600 border border-rose-200 rounded-md shadow-sm shrink-0">
+                  <Ban size={14} strokeWidth={3} />
+              </div>
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Voided</span>
+          </div>
+      </div>
+
       <div key={activeTab} className="animate-in fade-in zoom-in-[0.98] duration-300 ease-out fill-mode-both">
           {filteredDocs.length === 0 ? (
               <div className="bg-white border border-slate-200 rounded-[2rem] p-10 sm:p-14 flex flex-col items-center justify-center text-center shadow-sm">
@@ -435,30 +456,59 @@ export default function History() {
                       const totalPages = Math.ceil(docs.length / itemsPerPage);
                       const paginatedDocs = docs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
+                      // Determine colors for the cards inside
                       let tabThemeColor = 'emerald';
-                      let tabIconColor = 'text-emerald-500';
                       if (activeTab === 'cancelled') {
                           tabThemeColor = 'rose';
-                          tabIconColor = 'text-rose-500';
                       } else if (activeTab === 'archived') {
                           tabThemeColor = 'slate';
-                          tabIconColor = 'text-slate-500';
+                      }
+
+                      // Determine Outer Folder Theme
+                      let folderTheme = {
+                          bg: "bg-[#fef9c3]", 
+                          border: "border-yellow-300",
+                          text: "text-yellow-800",
+                          hover: "hover:bg-yellow-100/50"
+                      };
+                      if (activeTab === 'cancelled') {
+                          folderTheme = {
+                              bg: "bg-slate-100", 
+                              border: "border-slate-300",
+                              text: "text-slate-700",
+                              hover: "hover:bg-slate-200/50"
+                          };
                       }
 
                       return (
-                          <div key={category} className={`bg-white border rounded-[1.5rem] overflow-hidden transition-all duration-300 shadow-sm ${isCategoryExpanded ? 'border-slate-300 shadow-md ring-4 ring-slate-50/50' : 'border-slate-200 hover:border-slate-300'}`}>
-                              <button 
-                                  onClick={() => toggleCategoryAccordion(category)}
-                                  className={`w-full py-4 px-5 flex items-center justify-between transition-colors duration-200 ease-in-out focus:outline-none group active:bg-slate-50 ${isCategoryExpanded ? 'bg-slate-50/80 border-b border-slate-100' : 'bg-transparent hover:bg-slate-50/50'}`}
-                              >
-                                  <div className="flex flex-col text-left flex-1 min-w-0 pr-4 gap-1">
-                                      <div className="flex items-center gap-2.5">
-                                          <FolderTree size={20} className={tabIconColor} strokeWidth={2.5} />
-                                          <h4 className="font-bold text-slate-800 text-base sm:text-lg leading-snug break-words group-hover:text-slate-900 transition-colors">{category}</h4>
-                                      </div>
-                                      
-                                      <div className="flex items-center gap-2 mt-1">
-                                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md text-slate-500 bg-white border border-slate-200 shadow-sm">
+                          <div key={category} className="flex flex-col drop-shadow-sm transition-all duration-300 relative group">
+                              
+                              {/* --- FOLDER TAB (Outer Category) --- */}
+                              <div className="flex items-end pl-0">
+                                  <button 
+                                      onClick={() => toggleCategoryAccordion(category)}
+                                      className={`px-4 py-2 border-t-2 border-l-2 border-r-2 border-b-0 rounded-t-lg z-10 relative -mb-[2px] flex items-center gap-2 max-w-[80%] sm:max-w-[60%] transition-colors outline-none cursor-pointer ${folderTheme.bg} ${folderTheme.border} hover:brightness-95`}
+                                  >
+                                      <FolderOpen size={14} className={`shrink-0 ${folderTheme.text}`} strokeWidth={2.5} />
+                                      <span 
+                                          className={`text-xs sm:text-sm font-black uppercase tracking-wider truncate ${folderTheme.text}`}
+                                          title={category}
+                                      >
+                                          {category}
+                                      </span>
+                                  </button>
+                              </div>
+
+                              {/* --- FOLDER BODY (Outer Category) --- */}
+                              <div className={`flex-1 border-2 rounded-b-xl rounded-tr-xl rounded-tl-none relative z-0 transition-colors flex flex-col ${folderTheme.bg} ${folderTheme.border}`}>
+                                  
+                                  {/* Folder Header Row */}
+                                  <div 
+                                      onClick={() => toggleCategoryAccordion(category)}
+                                      className={`px-4 py-3 sm:px-5 sm:py-4 flex items-center justify-between cursor-pointer transition-colors ${isCategoryExpanded ? '' : 'rounded-b-xl'} rounded-tr-xl ${folderTheme.hover}`}
+                                  >
+                                      <div className="flex items-center gap-2">
+                                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md text-slate-600 bg-white/80 border border-slate-200 shadow-sm">
                                               {docs.length} document{docs.length !== 1 ? 's' : ''}
                                           </span>
                                           {newCount > 0 && !isCategoryExpanded && (
@@ -467,166 +517,181 @@ export default function History() {
                                               </span>
                                           )}
                                       </div>
+                                      <div className={`p-1.5 rounded-full transition-colors bg-white/60 text-slate-500 shadow-sm`}>
+                                        <ChevronDown 
+                                            size={18} 
+                                            strokeWidth={2.5}
+                                            className={`shrink-0 transition-transform duration-300 ${isCategoryExpanded ? 'rotate-180' : ''}`} 
+                                        />
+                                      </div>
                                   </div>
-                                  <div className={`p-2 rounded-full transition-colors ${isCategoryExpanded ? 'bg-slate-200 text-slate-800' : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200 group-hover:text-slate-600'}`}>
-                                    <ChevronDown 
-                                        size={18} 
-                                        strokeWidth={2.5}
-                                        className={`shrink-0 transition-transform duration-300 ${isCategoryExpanded ? 'rotate-180' : ''}`} 
-                                    />
-                                  </div>
-                              </button>
 
-                              <div className={`grid transition-[grid-template-rows,opacity] duration-[400ms] ease-in-out ${isCategoryExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
-                                  <div className="overflow-hidden">
-                                      <div className="bg-slate-50/50 p-4 sm:p-5">
-                                          <div className="flex flex-col gap-3.5">
-                                              {paginatedDocs.map((doc) => {
-                                                  const isCardExpanded = !!expandedCards[doc.id];
+                                  {/* Folder Expanded Content (The "Papers") */}
+                                  <div className={`grid transition-[grid-template-rows,opacity] duration-[400ms] ease-in-out ${isCategoryExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+                                      <div className="overflow-hidden">
+                                          <div className="p-3 sm:p-5 pt-0">
+                                              <div className="flex flex-col gap-3">
+                                                  {paginatedDocs.map((doc) => {
+                                                      const isCardExpanded = !!expandedCards[doc.id];
 
-                                                  return (
-                                                      <div key={doc.id} className="group relative bg-white rounded-2xl border border-slate-200 hover:border-slate-300 transition-all overflow-hidden shadow-sm hover:shadow-md">
-                                                          <div className={`absolute top-0 left-0 bottom-0 w-1.5 bg-${tabThemeColor}-500 transition-colors`}></div>
+                                                      return (
+                                                          <div key={doc.id} className="flex flex-col group drop-shadow-sm transition-all duration-200 hover:-translate-y-0.5">
+                                                              {/* INNER CARD (Paper Style) */}
+                                                              <div className="bg-white border-2 border-slate-200 rounded-2xl relative z-0 transition-colors flex flex-col hover:border-slate-300 overflow-hidden">
+                                                                  <div className={`absolute top-0 left-0 bottom-0 w-1.5 bg-${tabThemeColor}-500 transition-colors z-10`}></div>
 
-                                                          <div 
-                                                              onClick={() => toggleCardCollapse(doc.id)}
-                                                              className="p-4 pl-6 flex items-center justify-between gap-3 cursor-pointer select-none hover:bg-slate-50/70 transition-colors"
-                                                          >
-                                                              <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                                                                  <div className="flex flex-col min-w-0 flex-1">
-                                                                      <div className="flex items-center gap-2 mb-1.5">
-                                                                          <span className="text-[10px] font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 shrink-0 shadow-sm">
-                                                                              {doc.reference_no || doc.id.substring(0, 8)}
-                                                                          </span>
-                                                                          <span className={`flex items-center gap-1 text-[9px] font-black px-1.5 py-0.5 rounded border uppercase tracking-wider shrink-0 text-${tabThemeColor}-700 bg-${tabThemeColor}-50 border-${tabThemeColor}-200 shadow-sm`}>
-                                                                              {activeTab === 'completed' ? 'Completed' : activeTab === 'cancelled' ? 'Voided' : 'Archived'}
-                                                                          </span>
+                                                                  <div 
+                                                                      onClick={() => toggleCardCollapse(doc.id)}
+                                                                      className="p-4 pl-6 flex flex-col gap-2 cursor-pointer select-none hover:bg-slate-50/70 transition-colors"
+                                                                  >
+                                                                      {/* ROW 1: Doc # | Time | Actions */}
+                                                                      <div className="flex items-start justify-between gap-2">
+                                                                          <div className="flex flex-wrap items-center gap-2">
+                                                                              <span className="text-[10px] font-mono font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 shrink-0 shadow-sm uppercase tracking-wider">
+                                                                                  {doc.reference_no || doc.id.substring(0, 8)}
+                                                                              </span>
+                                                                              <div className="px-1.5 py-0.5 rounded border flex items-center gap-1 shadow-sm shrink-0 bg-slate-100 text-slate-600 border-slate-200">
+                                                                                  <Clock size={10} strokeWidth={2.5} />
+                                                                                  <span className="text-[10px] font-black tracking-widest font-mono whitespace-nowrap">
+                                                                                      {formatPHDateTime(doc.action_time || doc.created_at)}
+                                                                                  </span>
+                                                                              </div>
+                                                                          </div>
+
+                                                                          <div className="flex items-center gap-2 shrink-0">
+                                                                              {(doc.parent_doc_ref || doc.has_children) && (
+                                                                                  <button 
+                                                                                      onClick={(e) => { 
+                                                                                          e.stopPropagation(); 
+                                                                                          setLinkedTargetRef((doc.parent_doc_ref || doc.reference_no) as string);
+                                                                                          setIsLinkedModalOpen(true);
+                                                                                      }} 
+                                                                                      className="w-[26px] h-[26px] flex items-center justify-center bg-blue-50 text-blue-600 border border-blue-200 rounded-md shadow-sm hover:bg-blue-100 transition-colors shrink-0" 
+                                                                                      title="View Document Family"
+                                                                                  >
+                                                                                      <LinkIcon size={14} strokeWidth={3} />
+                                                                                  </button>
+                                                                              )}
+                                                                              
+                                                                              {activeTab === 'completed' ? (
+                                                                                  <div className="w-[26px] h-[26px] flex items-center justify-center bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-md shadow-sm shrink-0" title="Completed">
+                                                                                      <Check size={16} strokeWidth={3} />
+                                                                                  </div>
+                                                                              ) : activeTab === 'cancelled' ? (
+                                                                                  <div className="w-[26px] h-[26px] flex items-center justify-center bg-rose-50 text-rose-600 border border-rose-200 rounded-md shadow-sm shrink-0" title="Voided">
+                                                                                      <Ban size={16} strokeWidth={3} />
+                                                                                  </div>
+                                                                              ) : (
+                                                                                  <span className={`flex items-center gap-1 text-[9px] font-black px-1.5 py-0.5 rounded border uppercase tracking-wider shrink-0 text-slate-700 bg-slate-50 border-slate-200 shadow-sm`}>
+                                                                                      Archived
+                                                                                  </span>
+                                                                              )}
+
+                                                                              <ChevronDown 
+                                                                                  size={20} 
+                                                                                  className={`text-slate-400 shrink-0 transition-transform duration-200 ease-in-out ${isCardExpanded ? `rotate-180 text-${tabThemeColor}-600` : ''}`} 
+                                                                              />
+                                                                          </div>
                                                                       </div>
-                                                                      
-                                                                      <h4 className={`font-bold text-slate-900 text-sm sm:text-base leading-snug ${isCardExpanded ? '' : 'truncate'}`}>
+
+                                                                      {/* ROW 2: Title */}
+                                                                      <h4 className={`font-bold text-slate-900 text-sm sm:text-base leading-snug w-full mt-1 ${isCardExpanded ? '' : 'truncate'}`}>
                                                                           {doc.title || doc.subject}
                                                                       </h4>
-                                                                      
-                                                                      <div className="flex items-center gap-1.5 mt-1.5 shrink-0 text-slate-400">
-                                                                          <Clock size={12} strokeWidth={2.5} />
-                                                                          <span className="text-[10px] font-bold tracking-wide font-mono whitespace-nowrap">
-                                                                              {formatPHDateTime(doc.action_time || doc.created_at)}
-                                                                          </span>
-                                                                      </div>
                                                                   </div>
-                                                              </div>
 
-                                                              {/* --- NEW: LINK BADGE BESIDE CHEVRON --- */}
-                                                              <div className="flex items-center gap-2 shrink-0">
-                                                                {(doc.parent_doc_ref || doc.has_children) && (
-                                                                    <button 
-                                                                        onClick={(e) => { 
-                                                                            e.stopPropagation(); 
-                                                                            setLinkedTargetRef((doc.parent_doc_ref || doc.reference_no) as string);
-                                                                            setIsLinkedModalOpen(true);
-                                                                        }} 
-                                                                        className="w-[26px] h-[26px] flex items-center justify-center bg-blue-50 text-blue-600 border border-blue-200 rounded-md shadow-sm hover:bg-blue-100 transition-colors shrink-0" 
-                                                                        title="View Document Family"
-                                                                    >
-                                                                        <LinkIcon size={14} strokeWidth={3} />
-                                                                    </button>
-                                                                )}
-                                                                <ChevronDown 
-                                                                    size={20} 
-                                                                    className={`text-slate-400 shrink-0 transition-transform duration-200 ease-in-out ${isCardExpanded ? `rotate-180 text-${tabThemeColor}-600` : ''}`} 
-                                                                />
-                                                              </div>
-                                                          </div>
+                                                                  {/* --- EXPANDED "PAPER" AREA --- */}
+                                                                  <div 
+                                                                      className={`grid transition-[grid-template-rows,opacity] duration-[300ms] ease-in-out ${
+                                                                          isCardExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+                                                                      }`}
+                                                                  >
+                                                                      <div className="overflow-hidden">
+                                                                          <div className="mx-3 mb-3 p-4 bg-slate-50/50 rounded-xl shadow-sm border border-slate-200 space-y-4">
 
-                                                          <div 
-                                                              className={`grid transition-[grid-template-rows,opacity] duration-[300ms] ease-in-out ${
-                                                                  isCardExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
-                                                              }`}
-                                                          >
-                                                              <div className="overflow-hidden">
-                                                                  <div className="p-4 pl-6 pt-2 border-t border-slate-100 bg-white space-y-4">
-
-                                                                      <div className="flex items-center gap-2">
-                                                                          <div className="p-1.5 bg-slate-100 rounded-lg border border-slate-200"><User size={14} className="text-slate-500" /></div>
-                                                                          <p className="text-xs font-bold text-slate-500 tracking-wide">
-                                                                              Created by <span className="text-slate-800">{doc.creator_name}</span>
-                                                                          </p>
-                                                                      </div>
-
-                                                                      <div className={`p-4 rounded-xl border space-y-3 bg-${tabThemeColor}-50/50 border-${tabThemeColor}-100`}>
-                                                                          {activeTab === 'completed' || activeTab === 'archived' ? (
-                                                                              <div className="flex items-start gap-3">
-                                                                                  <MapPin size={18} className={`text-${tabThemeColor}-500 shrink-0`} />
-                                                                                  <div className="flex flex-col -mt-0.5">
-                                                                                      <span className={`text-${tabThemeColor}-700/70 text-[10px] font-black uppercase tracking-wider mb-0.5`}>Final Destination</span>
-                                                                                      <span className="text-sm text-slate-900 font-bold leading-snug">{doc.final_destination || 'Archived Location Unspecified'}</span>
-                                                                                  </div>
+                                                                              <div className="flex items-center gap-2">
+                                                                                  <div className="p-1.5 bg-white rounded-lg border border-slate-200 shadow-sm"><User size={14} className="text-slate-500" /></div>
+                                                                                  <p className="text-xs font-bold text-slate-500 tracking-wide">
+                                                                                      Created by <span className="text-slate-800">{doc.creator_name}</span>
+                                                                                  </p>
                                                                               </div>
-                                                                          ) : (
-                                                                              <div className="flex items-start gap-3">
-                                                                                  <AlertCircle size={18} className="text-rose-500 shrink-0" />
-                                                                                  <div className="flex flex-col -mt-0.5">
-                                                                                      <span className="text-rose-600/70 text-[10px] font-black uppercase tracking-wider mb-0.5">Reason for Cancellation</span>
-                                                                                      <span className="text-sm text-slate-900 font-bold leading-snug">{doc.remarks || 'No reason provided'}</span>
-                                                                                  </div>
-                                                                              </div>
-                                                                          )}
-                                                                      </div>
 
-                                                                      <div className="flex gap-2 pt-1 pb-1">
-                                                                          {doc.attachment_url && (
-                                                                              <button 
-                                                                                  onClick={() => setPreviewDocUrl(doc.attachment_url as string)} 
-                                                                                  className="shrink-0 py-2.5 px-4 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-xl flex items-center justify-center transition-all active:scale-95 border border-slate-200 shadow-sm"
-                                                                                  title="View Attached File"
-                                                                              >
-                                                                                  <Eye size={18} />
-                                                                              </button>
-                                                                          )}
-                                                                          {activeTab !== 'archived' ? (
-                                                                              <button 
-                                                                                  onClick={() => setTrailDoc(doc)}
-                                                                                  className="flex-1 py-2.5 px-4 bg-white hover:bg-slate-50 text-slate-800 font-bold rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 text-xs sm:text-sm border border-slate-200 shadow-sm"
-                                                                              >
-                                                                                  <Clock size={16} /> View Digital Trail
-                                                                              </button>
-                                                                          ) : (
-                                                                              <div className="flex-1 py-2.5 px-4 bg-slate-50 text-slate-400 font-bold rounded-xl flex items-center justify-center gap-2 text-xs sm:text-sm border border-slate-200">
-                                                                                  <Database size={16} /> Trail stored in Cold Storage
+                                                                              <div className={`p-4 rounded-xl border space-y-3 bg-${tabThemeColor}-50/50 border-${tabThemeColor}-100`}>
+                                                                                  {activeTab === 'completed' || activeTab === 'archived' ? (
+                                                                                      <div className="flex items-start gap-3">
+                                                                                          <MapPin size={18} className={`text-${tabThemeColor}-500 shrink-0`} />
+                                                                                          <div className="flex flex-col -mt-0.5">
+                                                                                              <span className={`text-${tabThemeColor}-700/70 text-[10px] font-black uppercase tracking-wider mb-0.5`}>Final Destination</span>
+                                                                                              <span className="text-sm text-slate-900 font-bold leading-snug">{doc.final_destination || 'Archived Location Unspecified'}</span>
+                                                                                          </div>
+                                                                                      </div>
+                                                                                  ) : (
+                                                                                      <div className="flex items-start gap-3">
+                                                                                          <AlertCircle size={18} className="text-rose-500 shrink-0" />
+                                                                                          <div className="flex flex-col -mt-0.5">
+                                                                                              <span className="text-rose-600/70 text-[10px] font-black uppercase tracking-wider mb-0.5">Reason for Cancellation</span>
+                                                                                              <span className="text-sm text-slate-900 font-bold leading-snug">{doc.remarks || 'No reason provided'}</span>
+                                                                                          </div>
+                                                                                      </div>
+                                                                                  )}
                                                                               </div>
-                                                                          )}
+
+                                                                              <div className="flex gap-2 pt-1 pb-1">
+                                                                                  {doc.attachment_url && (
+                                                                                      <button 
+                                                                                          onClick={() => setPreviewDocUrl(doc.attachment_url as string)} 
+                                                                                          className="shrink-0 py-2.5 px-4 bg-white hover:bg-slate-100 text-slate-700 font-bold rounded-xl flex items-center justify-center transition-all active:scale-95 border border-slate-200 shadow-sm"
+                                                                                          title="View Attached File"
+                                                                                      >
+                                                                                          <Eye size={18} />
+                                                                                      </button>
+                                                                                  )}
+                                                                                  {activeTab !== 'archived' ? (
+                                                                                      <button 
+                                                                                          onClick={() => setTrailDoc(doc)}
+                                                                                          className="flex-1 py-2.5 px-4 bg-white hover:bg-slate-100 text-slate-800 font-bold rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 text-xs sm:text-sm border border-slate-200 shadow-sm"
+                                                                                      >
+                                                                                          <Clock size={16} /> View Digital Trail
+                                                                                      </button>
+                                                                                  ) : (
+                                                                                      <div className="flex-1 py-2.5 px-4 bg-white text-slate-400 font-bold rounded-xl flex items-center justify-center gap-2 text-xs sm:text-sm border border-slate-200 shadow-sm">
+                                                                                          <Database size={16} /> Trail stored in Cold Storage
+                                                                                      </div>
+                                                                                  )}
+                                                                              </div>
+                                                                          </div>
                                                                       </div>
                                                                   </div>
                                                               </div>
                                                           </div>
-                                                      </div>
-                                                  );
-                                              })}
-                                          </div>
-
-                                          {totalPages > 1 && (
-                                              <div className="p-3 sm:p-4 bg-white rounded-xl border border-slate-200 mt-4 flex items-center justify-between shadow-sm">
-                                                  <span className="text-[10px] sm:text-xs font-bold text-slate-500">
-                                                      Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, docs.length)} of {docs.length}
-                                                  </span>
-                                                  <div className="flex gap-2">
-                                                      <button 
-                                                          disabled={currentPage === 1}
-                                                          onClick={() => setCategoryPages(prev => ({...prev, [category]: currentPage - 1}))}
-                                                          className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 rounded-lg text-[11px] sm:text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 active:scale-95 transition-all shadow-sm"
-                                                      >
-                                                          Prev
-                                                      </button>
-                                                      <button 
-                                                          disabled={currentPage === totalPages}
-                                                          onClick={() => setCategoryPages(prev => ({...prev, [category]: currentPage + 1}))}
-                                                          className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 rounded-lg text-[11px] sm:text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 active:scale-95 transition-all shadow-sm"
-                                                      >
-                                                          Next
-                                                      </button>
-                                                  </div>
+                                                      );
+                                                  })}
                                               </div>
-                                          )}
+
+                                              {totalPages > 1 && (
+                                                  <div className="p-3 sm:p-4 bg-white/70 rounded-xl border border-slate-200 mt-4 flex items-center justify-between shadow-sm">
+                                                      <span className="text-[10px] sm:text-xs font-bold text-slate-500">
+                                                          Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, docs.length)} of {docs.length}
+                                                      </span>
+                                                      <div className="flex gap-2">
+                                                          <button 
+                                                              disabled={currentPage === 1}
+                                                              onClick={() => setCategoryPages(prev => ({...prev, [category]: currentPage - 1}))}
+                                                              className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 rounded-lg text-[11px] sm:text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 active:scale-95 transition-all shadow-sm"
+                                                          >
+                                                              Prev
+                                                          </button>
+                                                          <button 
+                                                              disabled={currentPage === totalPages}
+                                                              onClick={() => setCategoryPages(prev => ({...prev, [category]: currentPage + 1}))}
+                                                              className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 rounded-lg text-[11px] sm:text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-50 active:scale-95 transition-all shadow-sm"
+                                                          >
+                                                              Next
+                                                          </button>
+                                                      </div>
+                                                  </div>
+                                              )}
+                                          </div>
                                       </div>
                                   </div>
                               </div>
