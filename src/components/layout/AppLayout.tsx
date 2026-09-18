@@ -63,61 +63,82 @@ export default function AppLayout() {
   useEffect(() => {
       if (import.meta.env.DEV || !('serviceWorker' in navigator)) return;
 
-      let isChecking = false;
+      let isMounted = true;
 
-      const checkUpdateSilently = async () => {
-          if (isChecking) return;
-          isChecking = true;
-          
+      const triggerUpdateModal = () => {
+          if (isMounted) setShowUpdateModal(true);
+      };
+
+      // 1. DEDICATED LISTENER: Sets up permanent eyes on the Service Worker lifecycle
+      const setupServiceWorkerListener = async () => {
           try {
-              // CRITICAL MOBILE FIX: Use .ready instead of getRegistration() so React waits for the SW to boot
               const registration = await navigator.serviceWorker.ready;
-              if (!registration) return;
 
-              // 1. Is there ALREADY an update waiting?
+              // State A: Update is already downloaded and waiting for user to restart
               if (registration.waiting) {
-                  setShowUpdateModal(true);
-                  return;
+                  triggerUpdateModal();
               }
 
-              // 2. Listen for NEW updates downloading right now
+              // State B: Update is currently downloading right now (we caught it mid-flight)
+              if (registration.installing) {
+                  registration.installing.addEventListener('statechange', (e) => {
+                      const target = e.target as ServiceWorker;
+                      if (target.state === 'installed' && navigator.serviceWorker.controller) {
+                          triggerUpdateModal();
+                      }
+                  });
+              }
+
+              // State C: Setup a permanent trap for any future updates discovered
               registration.addEventListener('updatefound', () => {
                   const newWorker = registration.installing;
                   if (newWorker) {
                       newWorker.addEventListener('statechange', () => {
                           if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                              setShowUpdateModal(true);
+                              triggerUpdateModal();
                           }
                       });
                   }
               });
-
-              // 3. Ping the server
-              await registration.update();
-          } catch (error) {
-              console.warn("Background update check failed:", error);
-          } finally {
-              isChecking = false;
+          } catch (err) {
+              console.warn("SW listener registration failed:", err);
           }
       };
 
-      // Desktop Check (Pauses on mobile when inactive)
-      const initialCheck = setTimeout(checkUpdateSilently, 3000);
-      const intervalCheck = setInterval(checkUpdateSilently, 10 * 60 * 1000);
+      setupServiceWorkerListener();
 
-      // CRITICAL MOBILE FIX: Ping server the exact moment the app is brought back to the screen
-      const handleVisibilityChange = () => {
-          if (document.visibilityState === 'visible') checkUpdateSilently();
+      // 2. DEDICATED PINGER: Only responsible for asking Cloudflare if hashes changed
+      const pingServerForUpdates = async () => {
+          try {
+              const registration = await navigator.serviceWorker.getRegistration();
+              if (registration) await registration.update(); // If an update exists, this triggers 'updatefound' automatically
+          } catch (error) {
+              console.warn("Silent ping failed:", error);
+          }
+      };
+
+      // Desktop Timers
+      const initialCheck = setTimeout(pingServerForUpdates, 1500);
+      const intervalCheck = setInterval(pingServerForUpdates, 10 * 60 * 1000);
+
+      // Mobile Resume Handlers (with 1-second delay for iOS/Android network wake-up)
+      const handleAppResume = () => {
+          setTimeout(pingServerForUpdates, 1000);
       };
       
+      const handleVisibilityChange = () => {
+          if (document.visibilityState === 'visible') handleAppResume();
+      };
+
       document.addEventListener('visibilitychange', handleVisibilityChange);
-      window.addEventListener('focus', checkUpdateSilently);
+      window.addEventListener('focus', handleAppResume);
 
       return () => {
+          isMounted = false;
           clearTimeout(initialCheck);
           clearInterval(intervalCheck);
           document.removeEventListener('visibilitychange', handleVisibilityChange);
-          window.removeEventListener('focus', checkUpdateSilently);
+          window.removeEventListener('focus', handleAppResume);
       };
   }, []);
 
