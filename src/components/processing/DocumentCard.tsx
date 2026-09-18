@@ -39,11 +39,13 @@ export default function DocumentCard({
     const isCreator = localDoc.created_by === currentUserId;
     const canReassign = isManager || isCreator;
     const canRevise = isManager || isCreator;
+    
+    // --- Determine if the document was self-assigned ---
+    const isSelfAssigned = isCreator && isManager;
 
     // --- Smart Category Length Formatter ---
     let displayCategory = localDoc.category || 'DOCUMENT';
     if (displayCategory.length > 22 && localDoc.reference_no) {
-        // Extract prefix from Ref No (e.g. IPCR-2026-3440 -> IPCR)
         const extractedPrefix = localDoc.reference_no.split('-')[0];
         if (extractedPrefix && extractedPrefix.length <= 10) {
             displayCategory = extractedPrefix;
@@ -83,7 +85,7 @@ export default function DocumentCard({
 
     // --- Dynamic Folder Themes ---
     let folderTheme = {
-        bg: "bg-[#fef9c3]", // Authentic Manila Cream
+        bg: "bg-[#fef9c3]", 
         border: "border-yellow-300",
         tabText: "text-yellow-800",
         hover: "hover:border-yellow-400"
@@ -122,7 +124,7 @@ export default function DocumentCard({
                          <FolderOpen size={12} className={`shrink-0 ${folderTheme.tabText}`} strokeWidth={2.5} />
                          <span 
                             className={`text-[10px] font-black uppercase tracking-wider truncate ${folderTheme.tabText}`}
-                            title={localDoc.category} // Full name appears on hover!
+                            title={localDoc.category} 
                          >
                              {displayCategory}
                          </span>
@@ -249,14 +251,16 @@ export default function DocumentCard({
                                     
                                     {/* --- ICONS CLUSTER (TOP RIGHT) --- */}
                                     <div className="flex items-center gap-1.5 shrink-0">
-                                        {localDoc.status === 'pending_receipt' ? (
-                                            <div className="w-[22px] h-[22px] flex items-center justify-center bg-amber-100 text-amber-700 border border-amber-200 rounded-md shadow-sm" title="Pending Receipt">
-                                                <AlertCircle size={14} strokeWidth={2.5}/>
-                                            </div>
-                                        ) : (
-                                            <div className="w-[22px] h-[22px] flex items-center justify-center bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-md shadow-sm" title="Custody Accepted">
-                                                <Handshake size={14} strokeWidth={2.5}/>
-                                            </div>
+                                        {!isSelfAssigned && (
+                                            localDoc.status === 'pending_receipt' ? (
+                                                <div className="w-[22px] h-[22px] flex items-center justify-center bg-amber-100 text-amber-700 border border-amber-200 rounded-md shadow-sm" title="Pending Receipt">
+                                                    <AlertCircle size={14} strokeWidth={2.5}/>
+                                                </div>
+                                            ) : (
+                                                <div className="w-[22px] h-[22px] flex items-center justify-center bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-md shadow-sm" title="Custody Accepted">
+                                                    <Handshake size={14} strokeWidth={2.5}/>
+                                                </div>
+                                            )
                                         )}
 
                                         {localDoc.is_urgent && (
