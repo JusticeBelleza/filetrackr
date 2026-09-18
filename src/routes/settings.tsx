@@ -79,7 +79,7 @@ export default function Settings() {
 
   const [showWhatsNew, setShowWhatsNew] = useState(false);
   const [hasUnseenUpdate, setHasUnseenUpdate] = useState(false);
-  const currentVersion = CHANGELOG[0].version;
+  const currentVersion = __APP_VERSION__;
 
   // 🚀 REACT QUERY: FETCH PROFILE 
   const { data: profile, isLoading } = useQuery({

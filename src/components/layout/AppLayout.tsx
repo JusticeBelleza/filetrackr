@@ -10,6 +10,7 @@ import { supabase } from '../../lib/supabase';
 import { useQuery, useQueryClient } from '@tanstack/react-query'; 
 
 import InstallPrompt from '../InstallPrompt'; 
+import AppUpdateModal from '../settings/AppUpdateModal';
 import clearTrackLogo from '../../assets/clear_track_logo.png';
 
 // --- Shared Modal Animation Styles ---
@@ -55,6 +56,70 @@ export default function AppLayout() {
   const [currentUserRole, setCurrentUserRole] = useState<'admin' | 'pho_staff' | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [dateInfo, setDateInfo] = useState({ long: '', short: '', time: '' });
+  
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+
+  // --- BACKGROUND UPDATE CHECKER ---
+  useEffect(() => {
+      if (import.meta.env.DEV || !('serviceWorker' in navigator)) return;
+
+      let isChecking = false;
+
+      const checkUpdateSilently = async () => {
+          if (isChecking) return;
+          isChecking = true;
+          
+          try {
+              // CRITICAL MOBILE FIX: Use .ready instead of getRegistration() so React waits for the SW to boot
+              const registration = await navigator.serviceWorker.ready;
+              if (!registration) return;
+
+              // 1. Is there ALREADY an update waiting?
+              if (registration.waiting) {
+                  setShowUpdateModal(true);
+                  return;
+              }
+
+              // 2. Listen for NEW updates downloading right now
+              registration.addEventListener('updatefound', () => {
+                  const newWorker = registration.installing;
+                  if (newWorker) {
+                      newWorker.addEventListener('statechange', () => {
+                          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                              setShowUpdateModal(true);
+                          }
+                      });
+                  }
+              });
+
+              // 3. Ping the server
+              await registration.update();
+          } catch (error) {
+              console.warn("Background update check failed:", error);
+          } finally {
+              isChecking = false;
+          }
+      };
+
+      // Desktop Check (Pauses on mobile when inactive)
+      const initialCheck = setTimeout(checkUpdateSilently, 3000);
+      const intervalCheck = setInterval(checkUpdateSilently, 10 * 60 * 1000);
+
+      // CRITICAL MOBILE FIX: Ping server the exact moment the app is brought back to the screen
+      const handleVisibilityChange = () => {
+          if (document.visibilityState === 'visible') checkUpdateSilently();
+      };
+      
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      window.addEventListener('focus', checkUpdateSilently);
+
+      return () => {
+          clearTimeout(initialCheck);
+          clearInterval(intervalCheck);
+          document.removeEventListener('visibilitychange', handleVisibilityChange);
+          window.removeEventListener('focus', checkUpdateSilently);
+      };
+  }, []);
 
   // Clock
   useEffect(() => {
@@ -135,12 +200,9 @@ export default function AppLayout() {
           });
       };
       
-      syncStorage(); // Sync on mount/tab change
+      syncStorage(); 
       
-      // Listen to the History custom event for absolute zero-delay clearing
       window.addEventListener('history_folder_viewed', syncStorage);
-      
-      // Fast polling fallback to instantly catch Processing tab updates
       const interval = setInterval(syncStorage, 1000); 
 
       return () => {
@@ -149,7 +211,7 @@ export default function AppLayout() {
       };
   }, [activeTab]);
 
-  // --- SUPABASE REALTIME FETCH (Only when data ACTUALLY changes) ---
+  // --- SUPABASE REALTIME FETCH ---
   useEffect(() => {
     const channel = supabase
       .channel('global-nav-document-updates')
@@ -157,7 +219,6 @@ export default function AppLayout() {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'documents' },
         () => {
-          // When a document changes in the DB, fetch new data.
           queryClient.invalidateQueries({ queryKey: ['globalNavData'] });
         }
       )
@@ -196,9 +257,8 @@ export default function AppLayout() {
       return { processingCount: pCount, historyCount: hCount };
   }, [navData, localViewed]);
 
-  // Hide the badge if we are currently looking at that tab
   const finalProcessingCount = activeTab === 'processing' ? 0 : processingCount;
-  const finalHistoryCount = historyCount; // Keep showing history badge until they open the specific folder
+  const finalHistoryCount = historyCount; 
 
   // Security Redirects
   useEffect(() => {
@@ -388,6 +448,14 @@ export default function AppLayout() {
 
       {isCreateModalOpen && <CreateDocumentModal />}
       <InstallPrompt />
+
+      {/* --- RENDER THE UPDATE MODAL --- */}
+      {showUpdateModal && (
+          <AppUpdateModal 
+              currentVersion={__APP_VERSION__} 
+              onClose={() => setShowUpdateModal(false)} 
+          />
+      )}
     </div>
   );
 }

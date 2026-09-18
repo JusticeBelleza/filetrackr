@@ -29,12 +29,11 @@ export default defineConfig({
     }),
 
     VitePWA({
-      registerType: 'autoUpdate',
-      // Forces the new Service Worker to take over immediately for seamless updates
+      registerType: 'prompt', // Changed from 'autoUpdate' to 'prompt'
       workbox: {
-        cleanupOutdatedCaches: true, // Added to prevent white screens on future updates
+        cleanupOutdatedCaches: true,
         clientsClaim: true,
-        skipWaiting: true
+        skipWaiting: false // Changed to false so updates wait for user confirmation
       },
       // Added pwa-180x180.png for iOS
       includeAssets: ['favicon.ico', 'pwa-180x180.png', 'pwa-192x192.png', 'pwa-512x512.png'],

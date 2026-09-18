@@ -13,7 +13,7 @@ export interface ReleaseNote {
 
 export const CHANGELOG: ReleaseNote[] = [
     {
-        version: "1.2.0",
+        version: __APP_VERSION__,
         date: "September 16, 2026",
         tagline: "Document Family Hierarchies & Department Directory",
         features: [
