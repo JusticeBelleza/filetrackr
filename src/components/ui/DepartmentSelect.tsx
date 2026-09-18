@@ -12,9 +12,11 @@ interface DepartmentSelectProps {
     value: string;
     onChange: (deptName: string) => void;
     isRelative?: boolean;
+    label?: string; // <-- Added label prop
 }
 
-export default function DepartmentSelect({ value, onChange, isRelative = false }: DepartmentSelectProps) {
+// <-- Set the default label to "Next Receiving Office"
+export default function DepartmentSelect({ value, onChange, isRelative = false, label = "Next Receiving Office" }: DepartmentSelectProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     
@@ -40,7 +42,6 @@ export default function DepartmentSelect({ value, onChange, isRelative = false }
                 .range(from, to);
 
             if (search) {
-                // Search both name AND prefix simultaneously in the background
                 query = query.or(`name.ilike.%${search}%,prefix.ilike.%${search}%`);
             }
 
@@ -108,7 +109,7 @@ export default function DepartmentSelect({ value, onChange, isRelative = false }
         <div className="relative w-full" ref={dropdownRef}>
             <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
                 <MapPin size={14} className="text-blue-600" /> 
-                Final Destination <span className="text-red-500">*</span>
+                {label} <span className="text-red-500">*</span> {/* <-- Dynamic label injected here */}
             </label>
 
             <button

@@ -145,7 +145,6 @@ export default function CreateDocumentModal() {
     const [attachment, setAttachment] = useState<File | Blob | null>(null);
     const [attachmentName, setAttachmentName] = useState<string>('');
 
-    // --- NEW: Copy to Clipboard State ---
     const [hasCopied, setHasCopied] = useState(false);
 
     const [formData, setFormData] = useState({
@@ -203,10 +202,9 @@ export default function CreateDocumentModal() {
             category: categoryName,
             trackingNumber: `${finalPrefix}-${year}-${randomId}`
         });
-        setHasCopied(false); // Reset copy state if they change the category
+        setHasCopied(false);
     };
 
-    // --- NEW: Copy Function ---
     const handleCopyRef = (e: React.MouseEvent) => {
         e.preventDefault();
         e.stopPropagation();
@@ -337,7 +335,6 @@ export default function CreateDocumentModal() {
                                 )}
                             </div>
                             
-                            {/* --- NEW: Copy to Clipboard Button --- */}
                             {formData.trackingNumber ? (
                                 <button 
                                     type="button"
@@ -416,7 +413,8 @@ export default function CreateDocumentModal() {
                                 <DepartmentSelect 
                                     value={formData.destination} 
                                     onChange={(val: string) => setFormData({...formData, destination: val})} 
-                                    isRelative={true}
+                                    isRelative={true} 
+                                    label="Final Destination" 
                                 />
                             </div>
                             <div className="relative z-10">
