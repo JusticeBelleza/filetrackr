@@ -14,6 +14,38 @@ export interface ReleaseNote {
 export const CHANGELOG: ReleaseNote[] = [
     {
         version: __APP_VERSION__,
+        date: "September 18, 2026",
+        tagline: "Inline Updates & System Resilience",
+        features: [
+            { 
+                icon: "🚀", 
+                title: "Inline System Updates", 
+                desc: "Replaced the dedicated update page with a seamless, minimalist inline modal featuring a real-time visual progress bar." 
+            },
+            { 
+                icon: "🍎", 
+                title: "iOS Background Wake-Up", 
+                desc: "Engineered a smart network wake-up delay and visibility listener to guarantee automatic update prompts when resuming the app on iPhones." 
+            },
+            { 
+                icon: "📡", 
+                title: "Resilient Update Listener", 
+                desc: "Decoupled the update pinger from the service worker listener, allowing the app to successfully catch and apply mid-flight background downloads." 
+            },
+            { 
+                icon: "🛡️", 
+                title: "Safe Configuration Fallback", 
+                desc: "Added a beautiful System Configuration Error screen that prevents the app from crashing to a white screen if database environments are missing." 
+            },
+            { 
+                icon: "⚡", 
+                title: "Optimized Route Loading", 
+                desc: "Cleaned up the main application router and removed redundant system update routes for faster initialization." 
+            }
+        ]
+    },
+    {
+        version: "1.2.0",
         date: "September 16, 2026",
         tagline: "Document Family Hierarchies & Department Directory",
         features: [

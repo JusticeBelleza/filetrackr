@@ -9,6 +9,7 @@ import { Toaster } from 'sonner';
 import AppLayout from './components/layout/AppLayout';
 import './index.css';
 import GlobalErrorBoundary from './components/system/GlobalErrorBoundary';
+import SystemConfigurationError from './components/system/SystemConfigurationError';
 
 // 1. DYNAMIC IMPORTS: Only load the page code when the user navigates to it
 const Dashboard = lazy(() => import('./routes/dashboard'));
@@ -29,13 +30,16 @@ const queryClient = new QueryClient({
 });
 
 // 2. INVISIBLE ROUTE LOADER
-// This prevents the "double loader" clash by letting the individual pages 
-// handle their own data-loading spinners (the green circles).
 const PageSkeleton = () => (
   <div className="w-full h-full min-h-[60vh] bg-transparent"></div>
 );
 
-// 3. SETUP REACT ROUTER WITH SUSPENSE WRAPPERS
+// 3. CHECK ENVIRONMENT VARIABLES
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const isMissingEnv = !supabaseUrl || !supabaseKey;
+
+// 4. SETUP REACT ROUTER WITH SUSPENSE WRAPPERS
 const router = createBrowserRouter([
   // Public Route (No Sidebar/Navigation)
   {
@@ -64,11 +68,16 @@ const router = createBrowserRouter([
   }
 ]);
 
+// 5. RENDER LOGIC: Intercept startup if environment variables are missing
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-      <Toaster position="top-center" richColors />
-    </QueryClientProvider>
+    {isMissingEnv ? (
+      <SystemConfigurationError />
+    ) : (
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+        <Toaster position="top-center" richColors />
+      </QueryClientProvider>
+    )}
   </StrictMode>
 );

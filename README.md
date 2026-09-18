@@ -1,6 +1,6 @@
 # 📂 Filetrackr Document Management System
 
-![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.2.1-blue.svg)
 ![React](https://img.shields.io/badge/React-19.2.8-61DAFB.svg?logo=react)
 ![Tailwind](https://img.shields.io/badge/Tailwind_CSS-4.3.3-38B2AC.svg?logo=tailwind-css)
 ![Supabase](https://img.shields.io/badge/Supabase-Powered-3ECF8E.svg?logo=supabase)
